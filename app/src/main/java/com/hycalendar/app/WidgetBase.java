@@ -127,10 +127,16 @@ public abstract class WidgetBase extends AppWidgetProvider {
         rv.setInt(R.id.bg, "setColorFilter", o.theme.bg | 0xFF000000);
         rv.setInt(R.id.bg, "setImageAlpha", a);
         // 투명도가 낮을 때 글자색은 배경이 아니라 테마 기준
-        rv.setTextViewText(R.id.title, ym.getYear() + "." + ym.getMonthValue());
+        rv.setTextViewText(R.id.title, ym.getYear() + ". " + ym.getMonthValue());
         rv.setTextColor(R.id.title, o.theme.fg);
-        rv.setTextColor(R.id.prev, o.theme.fg);
-        rv.setTextColor(R.id.next, o.theme.fg);
+        rv.setInt(R.id.prev, "setColorFilter", o.theme.fg);
+        rv.setInt(R.id.next, "setColorFilter", o.theme.fg);
+        rv.setInt(R.id.gear, "setColorFilter", o.theme.fg);
+        rv.setInt(R.id.refresh, "setColorFilter", o.theme.fg);
+        Intent cfg = new Intent(c, WidgetConfigActivity.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                .setData(android.net.Uri.parse("hycal://widget/" + id)).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        rv.setOnClickPendingIntent(R.id.gear, PendingIntent.getActivity(c, id + 5000, cfg, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        rv.setOnClickPendingIntent(R.id.refresh, nav(c, m, id, 0));
 
         Intent open = new Intent(c, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent po = PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

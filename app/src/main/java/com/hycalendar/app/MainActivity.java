@@ -70,6 +70,12 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        WidgetBase.updateAll(this);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         if (cal != null) cal.invalidate();
@@ -95,6 +101,7 @@ public class MainActivity extends Activity {
 
     // ---------- UI 뼈대 ----------
     private void buildUi() {
+        Ui.init(this);
         th = Theme.get(Store.getS("theme", "auto"), Opts.systemDark(this));
         getWindow().setStatusBarColor(th.bg);
         getWindow().setNavigationBarColor(th.bg);
@@ -110,22 +117,35 @@ public class MainActivity extends Activity {
         header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView prev = tv("‹", 22, th.fg);
+        header.setPadding(dp(16), dp(4), dp(8), dp(4));
+        title = Ui.text(this, "", 24, th.fg, true);
+        title.setOnClickListener(v -> { ym = YearMonth.now(); refreshTitle(); if (cal != null) cal.invalidate(); });
+        header.addView(title);
+        TextView today = Ui.text(this, "오늘", 13, th.fg, false);
+        today.setPadding(dp(12), dp(4), dp(12), dp(4));
+        today.setBackground(Ui.stroke(0, th.fg, 14, 1.2f));
+        today.setOnClickListener(v -> { ym = YearMonth.now(); refreshTitle(); if (cal != null) cal.invalidate(); });
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tp.setMargins(dp(10), 0, 0, 0);
+        header.addView(today, tp);
+        View sp = new View(this);
+        header.addView(sp, new LinearLayout.LayoutParams(0, 1, 1));
+        TextView prev = Ui.text(this, "‹", 26, th.fg, false);
         prev.setGravity(Gravity.CENTER);
         prev.setOnClickListener(v -> moveMonth(-1));
-        TextView next = tv("›", 22, th.fg);
+        TextView next = Ui.text(this, "›", 26, th.fg, false);
         next.setGravity(Gravity.CENTER);
         next.setOnClickListener(v -> moveMonth(1));
-        title = tv("", 15, th.fg);
-        title.setGravity(Gravity.CENTER);
-        title.setOnClickListener(v -> { ym = YearMonth.now(); refreshTitle(); if (cal != null) cal.invalidate(); });
-        header.addView(prev, new LinearLayout.LayoutParams(dp(52), dp(34)));
-        header.addView(title, new LinearLayout.LayoutParams(0, dp(34), 1));
-        header.addView(next, new LinearLayout.LayoutParams(dp(52), dp(34)));
+        header.addView(prev, new LinearLayout.LayoutParams(dp(44), dp(40)));
+        header.addView(next, new LinearLayout.LayoutParams(dp(44), dp(40)));
         root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        View div = new View(this);
+        div.setBackgroundColor(th.line);
+        root.addView(div, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
         tabbar = new LinearLayout(this);
         tabbar.setOrientation(LinearLayout.HORIZONTAL);
@@ -133,11 +153,25 @@ public class MainActivity extends Activity {
         String[] names = {"달력", "부부", "4개조", "근태", "설정"};
         for (int i = 0; i < names.length; i++) {
             final int ix = i;
-            TextView t = tv(names[i], 13, th.fg);
-            t.setGravity(Gravity.CENTER);
-            t.setTag("tab" + i);
-            t.setOnClickListener(v -> showTab(ix));
-            tabbar.addView(t, new LinearLayout.LayoutParams(0, dp(46), 1));
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER);
+            cell.setTag("tab" + i);
+            View bar = new View(this);
+            bar.setTag("bar");
+            cell.addView(bar, new LinearLayout.LayoutParams(dp(34), dp(3)));
+            Ui.TabIcon ic = new Ui.TabIcon(this, i);
+            ic.setTag("ic");
+            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(26), dp(26));
+            ip.setMargins(0, dp(6), 0, dp(1));
+            cell.addView(ic, ip);
+            TextView t = Ui.text(this, names[i], 10.5f, th.sub, false);
+            t.setTag("lb");
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, 0, 0, dp(5));
+            cell.addView(t, lp);
+            cell.setOnClickListener(v -> showTab(ix));
+            tabbar.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         }
         root.addView(tabbar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -150,10 +184,12 @@ public class MainActivity extends Activity {
         content.removeAllViews();
         cal = null;
         for (int k = 0; k < 5; k++) {
-            TextView t = tabbar.findViewWithTag("tab" + k);
-            if (t == null) continue;
-            t.setTextColor(k == i ? th.todayStroke : th.sub);
-            t.setTypeface(null, k == i ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            View cell = tabbar.findViewWithTag("tab" + k);
+            if (cell == null) continue;
+            boolean on = k == i;
+            ((Ui.TabIcon) cell.findViewWithTag("ic")).setColor(on ? th.todayStroke : th.sub);
+            ((TextView) cell.findViewWithTag("lb")).setTextColor(on ? th.todayStroke : th.sub);
+            cell.findViewWithTag("bar").setBackgroundColor(on ? th.todayStroke : 0);
         }
         if (i <= 2) {
             header.setVisibility(View.VISIBLE);
@@ -162,11 +198,13 @@ public class MainActivity extends Activity {
             refreshTitle();
         } else {
             header.setVisibility(View.GONE);
+            content.setBackgroundColor(th.page);
             content.addView(i == 3 ? buildLeave() : buildSettings());
         }
+        if (i <= 2) content.setBackgroundColor(th.bg);
     }
 
-    private void refreshTitle() { title.setText(ym.getYear() + "." + ym.getMonthValue()); }
+    private void refreshTitle() { title.setText(ym.getYear() + ". " + ym.getMonthValue()); }
 
     private void moveMonth(int d) {
         ym = ym.plusMonths(d);
@@ -223,84 +261,120 @@ public class MainActivity extends Activity {
     // ---------- 하루 상세 ----------
     private void showDay(LocalDate d) {
         Opts o = Opts.load(this, "", Renderer.COUPLE);
+        final android.app.Dialog dlg = new android.app.Dialog(this);
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         ScrollView sv = new ScrollView(this);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(20), dp(18), dp(20), dp(10));
-        box.setBackgroundColor(th.bg);
+        box.setPadding(dp(20), dp(18), dp(20), dp(16));
+        box.setBackground(Ui.round(th.card, 20));
         sv.addView(box);
+        dlg.setContentView(sv);
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            dlg.getWindow().setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.92f), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
 
         Lunar.Res lr = Lunar.of(d);
-        box.addView(tv(d.getMonthValue() + "월 " + d.getDayOfMonth() + "일 (" + DOWS[d.getDayOfWeek().getValue() % 7] + ")  음력 " + (lr.leap ? "윤" : "") + lr.m + "." + lr.d, 18, th.fg));
+        int dowIdx = d.getDayOfWeek().getValue() % 7;
+        TextView head = Ui.text(this, d.getMonthValue() + "월 " + d.getDayOfMonth() + "일 " + DOWS[dowIdx] + "요일", 20, dowIdx == 0 ? th.sun : dowIdx == 6 ? th.sat : th.fg, true);
+        box.addView(head);
         String hol = Holidays.name(d);
-        if (!hol.isEmpty()) box.addView(tv(hol, 14, th.sun));
+        box.addView(Ui.text(this, "음력 " + (lr.leap ? "윤" : "") + lr.m + "." + lr.d + (hol.isEmpty() ? "" : "  ·  " + hol), 13, hol.isEmpty() ? th.sub : th.sun, false));
+
         char my = ShiftCore.typeFor(o.me, d), mt = ShiftCore.typeFor(o.mate, d);
-        box.addView(tv("나 " + lbl(my) + "      배우자 " + lbl(mt), 15, th.fg));
+        LinearLayout sr = new LinearLayout(this);
+        sr.setPadding(0, dp(10), 0, dp(6));
+        sr.addView(shiftPill("나", my));
+        View gap = new View(this);
+        sr.addView(gap, new LinearLayout.LayoutParams(dp(8), 1));
+        sr.addView(shiftPill("배우자", mt));
+        box.addView(sr);
 
         EditText et = new EditText(this);
         et.setHint("메모 (줄바꿈으로 여러 개)");
         et.setHintTextColor(th.sub);
         et.setTextColor(th.fg);
+        et.setTextSize(15);
         et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         et.setMinLines(3);
         et.setGravity(Gravity.TOP);
+        et.setBackground(Ui.round(th.soft, 12));
+        et.setPadding(dp(12), dp(10), dp(12), dp(10));
         et.setText(Store.memo(d));
         box.addView(et, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        final AlertDialog[] dlg = new AlertDialog[1];
-
         List<Store.Use> uses = Store.usesOn(d);
         if (!uses.isEmpty()) {
-            box.addView(space(10));
-            box.addView(tv("근태 기록", 13, th.sub));
+            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ml.setMargins(0, dp(14), 0, dp(2));
+            box.addView(Ui.text(this, "근태 기록", 12, th.sub, true), ml);
             for (Store.Use u : uses) {
                 LeaveCore.Type t = LeaveCore.type(u.key);
                 LinearLayout row = new LinearLayout(this);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.addView(tv(t == null ? u.key : t.label, 15, th.leave), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-                Button del = button("삭제", v -> {
+                row.addView(Ui.text(this, t == null ? u.key : t.label, 15, th.orange, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                row.addView(Ui.btn(this, th, "삭제", false, v -> {
                     Store.setMemo(d, et.getText().toString());
                     Store.removeUse(u.id);
                     toast("취소했어요. 잔여가 복원됐어요");
-                    dlg[0].dismiss();
+                    dlg.dismiss();
                     dataChanged();
                     showDay(d);
-                });
-                row.addView(del);
+                }));
                 box.addView(row);
             }
         }
 
         if (my != 'O') {
-            box.addView(space(10));
-            box.addView(tv("근태 사용 추가 (내 근무 " + lbl(my) + ")", 13, th.sub));
+            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ml.setMargins(0, dp(14), 0, dp(4));
+            box.addView(Ui.text(this, "근태 사용 추가", 12, th.sub, true), ml);
             List<LeaveCore.Type> ok = new ArrayList<>();
             for (LeaveCore.Type t : LeaveCore.TYPES) if (LeaveCore.allowed(t, my)) ok.add(t);
             for (int i = 0; i < ok.size(); i += 3) {
                 LinearLayout row = new LinearLayout(this);
-                for (int j = i; j < Math.min(i + 3, ok.size()); j++) {
+                for (int j = i; j < i + 3; j++) {
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+                    lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+                    if (j >= ok.size()) { row.addView(new View(this), lp); continue; }
                     final LeaveCore.Type t = ok.get(j);
-                    Button bt = button(t.label, v -> {
+                    TextView bt = Ui.btn(this, th, t.label, false, v -> {
                         for (String k : Store.useKeysOn(d)) if (k.equals(t.key)) { toast("이미 등록돼 있어요"); return; }
                         Store.setMemo(d, et.getText().toString());
                         double nb = Store.addUse(d, t);
                         if (Double.isNaN(nb)) {
                             if (t.pool != null) toast(LeaveCore.START + "년 이전 기간은 차감 없이 기록만 해요");
                         } else if (nb < 0) toast("잔여가 부족해요 (" + nb + ")");
-                        dlg[0].dismiss();
+                        dlg.dismiss();
                         dataChanged();
                         showDay(d);
                     });
-                    row.addView(bt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                    bt.setTextSize(13);
+                    bt.setPadding(dp(4), dp(10), dp(4), dp(10));
+                    row.addView(bt, lp);
                 }
                 box.addView(row);
             }
         }
 
-        dlg[0] = new AlertDialog.Builder(this).setView(sv)
-                .setPositiveButton("저장", (a, w) -> { Store.setMemo(d, et.getText().toString()); dataChanged(); })
-                .setNegativeButton("닫기", null).create();
-        dlg[0].show();
+        LinearLayout act = new LinearLayout(this);
+        act.setPadding(0, dp(16), 0, 0);
+        LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        l1.setMargins(0, 0, dp(6), 0);
+        LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        l2.setMargins(dp(6), 0, 0, 0);
+        act.addView(Ui.btn(this, th, "닫기", false, v -> dlg.dismiss()), l1);
+        act.addView(Ui.btn(this, th, "저장", true, v -> { Store.setMemo(d, et.getText().toString()); dlg.dismiss(); dataChanged(); }), l2);
+        box.addView(act);
+        dlg.show();
+    }
+
+    private View shiftPill(String who, char t) {
+        TextView v = Ui.text(this, who + "  " + lbl(t), 14, t == 'O' ? th.offText : Theme.onColor(th.shiftColor(t)), true);
+        v.setPadding(dp(14), dp(6), dp(14), dp(6));
+        v.setBackground(Ui.round(t == 'O' ? th.soft : th.shiftColor(t), 16));
+        return v;
     }
 
     private String lbl(char t) { return t == 'O' ? "휴" : String.valueOf(t); }
@@ -311,44 +385,57 @@ public class MainActivity extends Activity {
         LinearLayout box = vbox();
         sv.addView(box);
 
+        LinearLayout yc = Ui.card(this, th);
         LinearLayout yr = new LinearLayout(this);
         yr.setGravity(Gravity.CENTER_VERTICAL);
-        TextView p = tv("‹", 24, th.fg); p.setGravity(Gravity.CENTER);
+        TextView p = Ui.text(this, "‹", 26, th.fg, false); p.setGravity(Gravity.CENTER);
         p.setOnClickListener(v -> { leaveYear = Math.max(LeaveCore.START, leaveYear - 1); showTab(3); });
-        TextView n = tv("›", 24, th.fg); n.setGravity(Gravity.CENTER);
+        TextView n = Ui.text(this, "›", 26, th.fg, false); n.setGravity(Gravity.CENTER);
         n.setOnClickListener(v -> { leaveYear++; showTab(3); });
-        TextView yt = tv(leaveYear + "년", 18, th.fg); yt.setGravity(Gravity.CENTER);
+        TextView yt = Ui.text(this, leaveYear + "년", 20, th.fg, true); yt.setGravity(Gravity.CENTER);
         yr.addView(p, new LinearLayout.LayoutParams(dp(56), dp(40)));
         yr.addView(yt, new LinearLayout.LayoutParams(0, dp(40), 1));
         yr.addView(n, new LinearLayout.LayoutParams(dp(56), dp(40)));
-        box.addView(yr);
-        box.addView(tv("연도를 고르고 잔여를 입력해 저장하세요. 연차는 전년 12.18~금년 12.17, 그 외는 1.1~12.31 기준이며 사용한 날짜가 속한 기간에서 차감·복원됩니다. 1개=8시간(0.5=오전/오후, 0.25=2시간, 0.125=1시간)", 12, th.sub));
+        yc.addView(yr);
+        yc.addView(Ui.text(this, "연도를 고르고 잔여를 입력해 저장하세요. 연차는 전년 12.18~금년 12.17, 그 외는 1.1~12.31 기준이며 사용한 날짜가 속한 기간에서 차감·복원됩니다. 1개=8시간 (0.5=오전/오후, 0.25=2시간, 0.125=1시간)", 12, th.sub, false));
+        box.addView(yc);
 
         for (String pool : LeaveCore.POOLS) {
-            box.addView(space(14));
-            box.addView(tv(LeaveCore.poolName(pool), 16, th.fg));
-            box.addView(tv(LeaveCore.periodText(pool, leaveYear), 12, th.sub));
+            LinearLayout cd = Ui.card(this, th);
             double bal = Store.bal(pool, leaveYear), used = Store.used(pool, leaveYear);
-            box.addView(tv("잔여 " + fmt(bal) + "   사용 " + fmt(used), 15, bal < 0 ? th.sun : th.fg));
+            LinearLayout top = new LinearLayout(this);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            TextView name = Ui.text(this, LeaveCore.poolName(pool), 16, th.fg, true);
+            top.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            top.addView(Ui.text(this, "잔여 " + fmt(bal), 18, bal < 0 ? th.sun : th.todayStroke, true));
+            cd.addView(top);
+            cd.addView(Ui.text(this, LeaveCore.periodText(pool, leaveYear) + "  ·  사용 " + fmt(used), 12, th.sub, false));
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(8), 0, 0);
             EditText et = new EditText(this);
             et.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
             et.setText(fmt(bal));
             et.setTextColor(th.fg);
-            row.addView(et, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            row.addView(button(leaveYear + "년 잔여 저장", v -> {
+            et.setBackground(Ui.round(th.soft, 10));
+            et.setPadding(dp(12), dp(8), dp(12), dp(8));
+            et.setGravity(Gravity.END);
+            LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            ep.setMargins(0, 0, dp(8), 0);
+            row.addView(et, ep);
+            row.addView(Ui.btn(this, th, "저장", true, v -> {
                 try {
                     Store.setBal(pool, leaveYear, Double.parseDouble(et.getText().toString().trim()));
-                    toast("저장했어요");
+                    toast(leaveYear + "년 잔여를 저장했어요");
                     showTab(3);
                 } catch (Exception e) { toast("숫자를 입력하세요"); }
             }));
-            box.addView(row);
+            cd.addView(row);
+            box.addView(cd);
         }
 
-        box.addView(space(18));
-        box.addView(tv(leaveYear + "년 사용 내역", 16, th.fg));
+        box.addView(Ui.sectionTitle(this, th, leaveYear + "년 사용 내역"));
+        LinearLayout hc = Ui.card(this, th);
         List<Store.Use> uses = Store.allUses();
         Collections.sort(uses, (a, b) -> a.date.compareTo(b.date));
         boolean any = false;
@@ -360,11 +447,12 @@ public class MainActivity extends Activity {
             any = true;
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.addView(tv(u.date + "  " + t.label, 14, th.fg), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            row.addView(button("삭제", v -> { Store.removeUse(u.id); dataChanged(); }));
-            box.addView(row);
+            row.addView(Ui.text(this, u.date + "  " + t.label, 14, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            row.addView(Ui.btn(this, th, "삭제", false, v -> { Store.removeUse(u.id); dataChanged(); }));
+            hc.addView(row);
         }
-        if (!any) box.addView(tv("사용 내역이 없어요. 달력에서 날짜를 눌러 등록하세요.", 13, th.sub));
+        if (!any) hc.addView(Ui.text(this, "사용 내역이 없어요. 달력에서 날짜를 눌러 등록하세요.", 13, th.sub, false));
+        box.addView(hc);
         return sv;
     }
 
@@ -379,146 +467,128 @@ public class MainActivity extends Activity {
         LinearLayout box = vbox();
         sv.addView(box);
 
-        box.addView(section("내 정보"));
+        box.addView(Ui.sectionTitle(this, th, "근무조"));
+        LinearLayout g = Ui.card(this, th);
+        g.addView(Ui.text(this, "나", 13, th.sub, false));
+        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); dataChanged(); }));
+        g.addView(Ui.text(this, "배우자", 13, th.sub, false));
+        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
+        box.addView(g);
+
+        box.addView(Ui.sectionTitle(this, th, "내 정보"));
+        LinearLayout nc = Ui.card(this, th);
         LinearLayout nr = new LinearLayout(this);
         nr.setGravity(Gravity.CENTER_VERTICAL);
         EditText nick = new EditText(this);
         nick.setHint("닉네임 (한글 2~5자)");
         nick.setHintTextColor(th.sub);
         nick.setTextColor(th.fg);
+        nick.setBackground(Ui.round(th.soft, 10));
+        nick.setPadding(dp(12), dp(8), dp(12), dp(8));
         nick.setText(Store.getS("nick", ""));
-        nr.addView(nick, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        nr.addView(button("저장", v -> {
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        np.setMargins(0, 0, dp(8), 0);
+        nr.addView(nick, np);
+        nr.addView(Ui.btn(this, th, "변경", false, v -> {
             String s = nick.getText().toString().trim();
             if (!s.matches("^[가-힣]{2,5}$")) { toast("한글 2~5글자만 가능해요"); return; }
             Store.putS("nick", s);
             toast("저장했어요 (중복 검사는 서버 연동 후 적용돼요)");
         }));
-        box.addView(nr);
+        nc.addView(nr);
+        box.addView(nc);
 
-        box.addView(label("내 조"));
-        box.addView(choiceRow(new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); dataChanged(); }));
-        box.addView(label("배우자 조"));
-        box.addView(choiceRow(new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
+        box.addView(Ui.sectionTitle(this, th, "보기"));
+        LinearLayout vc = Ui.card(this, th);
+        vc.addView(Ui.toggle(this, th, "공휴일 표시", Store.getB("holiday", true), on -> { Store.putB("holiday", on); dataChanged(); }));
+        vc.addView(Ui.toggle(this, th, "메모 표시", Store.getB("showmemo", true), on -> { Store.putB("showmemo", on); dataChanged(); }));
+        vc.addView(Ui.toggle(this, th, "날짜 구분선", Store.getB("lines", true), on -> { Store.putB("lines", on); dataChanged(); }));
+        vc.addView(Ui.toggle(this, th, "월요일부터 시작", Store.getB("monstart", false), on -> { Store.putB("monstart", on); dataChanged(); }));
+        box.addView(vc);
 
-        box.addView(section("화면"));
-        box.addView(label("테마"));
+        box.addView(Ui.sectionTitle(this, th, "테마"));
+        LinearLayout tc = Ui.card(this, th);
         for (int i = 0; i < Theme.NAMES.length; i += 3) {
             int end = Math.min(i + 3, Theme.NAMES.length);
             final int base = i;
             String[] part = java.util.Arrays.copyOfRange(Theme.LABELS, i, end);
             int cur = java.util.Arrays.asList(Theme.NAMES).indexOf(Store.getS("theme", "auto")) - i;
-            box.addView(choiceRow(part, cur, ix -> { Store.putS("theme", Theme.NAMES[base + ix]); dataChanged(); recreate(); }));
+            tc.addView(Ui.segmented(this, th, part, cur, ix -> { Store.putS("theme", Theme.NAMES[base + ix]); dataChanged(); recreate(); }));
         }
-        box.addView(label("근무 표시 모양"));
-        box.addView(choiceRow(new String[]{"원", "둥근 사각", "사각"}, Store.getI("shape", 0), i -> { Store.putI("shape", i); dataChanged(); }));
-        box.addView(label("음력 표시"));
-        box.addView(choiceRow(new String[]{"끔", "초하루·보름", "전체"}, Store.getI("lunar", 1), i -> { Store.putI("lunar", i); dataChanged(); }));
-        box.addView(check("월요일부터 시작", "monstart", false));
-        box.addView(check("공휴일 표시", "holiday", true));
-        box.addView(check("메모 표시", "showmemo", true));
-        box.addView(check("날짜 구분선", "lines", true));
+        box.addView(tc);
 
-        box.addView(section("크기·간격"));
-        box.addView(seek("날짜 숫자 크기", "s_date", 0.6f, 1.6f, 1f));
-        box.addView(seek("근무 표시 크기", "s_shift", 0.5f, 1.6f, 1f));
-        box.addView(seek("배우자 근무 크기 (부부 탭)", "s_mate", 0.4f, 1.2f, 0.8f));
-        box.addView(seek("메모 글자 크기", "s_memo", 0.6f, 1.6f, 1f));
-        box.addView(seek("날짜와 근무 사이 간격", "s_gapds", 0f, 1f, 0.1f));
-        box.addView(seek("근무와 메모 사이 간격", "s_gapsm", 0f, 1f, 0.1f));
+        box.addView(Ui.sectionTitle(this, th, "화면 설정"));
+        LinearLayout sc = Ui.card(this, th);
+        sc.addView(Ui.text(this, "근무 모양", 13, th.sub, false));
+        sc.addView(Ui.segmented(this, th, new String[]{"원", "둥근 사각", "사각"}, Store.getI("shape", 0), i -> { Store.putI("shape", i); dataChanged(); }));
+        sc.addView(Ui.text(this, "음력 표시", 13, th.sub, false));
+        sc.addView(Ui.segmented(this, th, new String[]{"안 함", "초하루·보름", "매일"}, Store.getI("lunar", 1), i -> { Store.putI("lunar", i); dataChanged(); }));
+        sc.addView(slider("날짜 글씨 크기", "s_date", 0.6f, 1.6f, 1f));
+        sc.addView(slider("근무 표시 크기", "s_shift", 0.5f, 1.6f, 1f));
+        sc.addView(slider("배우자 근무 크기 (부부 탭)", "s_mate", 0.4f, 1.2f, 0.8f));
+        sc.addView(slider("메모 글씨 크기", "s_memo", 0.6f, 1.6f, 1f));
+        sc.addView(slider("날짜 ↔ 근무 간격", "s_gapds", 0f, 1f, 0.1f));
+        sc.addView(slider("근무 ↔ 메모 간격", "s_gapsm", 0f, 1f, 0.1f));
+        box.addView(sc);
 
-        box.addView(section("출근 알람 (휴무·연차 종일·검진·교육은 울리지 않음)"));
-        for (char t : Alarms.TYPES) box.addView(alarmRow(t));
+        box.addView(Ui.sectionTitle(this, th, "출근 알람 (휴무·연차 종일·검진·교육은 울리지 않음)"));
+        LinearLayout ac = Ui.card(this, th);
+        for (char t : Alarms.TYPES) ac.addView(alarmRow(t));
+        box.addView(ac);
 
-        box.addView(section("백업"));
+        box.addView(Ui.sectionTitle(this, th, "백업·복원"));
+        LinearLayout bc = Ui.card(this, th);
         LinearLayout br = new LinearLayout(this);
-        br.addView(button("파일로 저장", v -> {
+        LinearLayout.LayoutParams b1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        b1.setMargins(0, 0, dp(6), 0);
+        LinearLayout.LayoutParams b2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        b2.setMargins(dp(6), 0, 0, 0);
+        br.addView(Ui.btn(this, th, "파일로 내보내기", false, v -> {
             Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json")
                     .putExtra(Intent.EXTRA_TITLE, "hycalendar_backup_" + LocalDate.now() + ".json");
             startActivityForResult(i, REQ_EXPORT);
-        }), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        br.addView(button("파일에서 불러오기", v -> {
+        }), b1);
+        br.addView(Ui.btn(this, th, "파일에서 불러오기", false, v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
             startActivityForResult(i, REQ_IMPORT);
-        }), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        box.addView(br);
-        box.addView(tv("앱을 업데이트해도 메모·일정·설정은 그대로 유지되고, 버전이 바뀔 때 자동으로 내부 백업을 남깁니다.", 12, th.sub));
+        }), b2);
+        bc.addView(br);
+        TextView note = Ui.text(this, "앱을 업데이트해도 메모·일정·설정은 그대로 유지되고, 버전이 바뀔 때 자동으로 내부 백업을 남깁니다.", 12, th.sub, false);
+        note.setPadding(0, dp(8), 0, 0);
+        bc.addView(note);
+        box.addView(bc);
+
         String ver = "";
         try { ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }
-        box.addView(tv("버전 " + ver, 12, th.sub));
-        box.addView(space(30));
+        TextView vt = Ui.text(this, "앱 버전 " + ver, 12, th.sub, false);
+        vt.setPadding(dp(6), dp(4), 0, dp(30));
+        box.addView(vt);
         return sv;
     }
 
     private View alarmRow(char t) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        CheckBox cb = new CheckBox(this);
-        cb.setText(t + " 근무일 알람");
-        cb.setTextColor(th.fg);
-        cb.setChecked(Alarms.enabled(t));
-        cb.setOnCheckedChangeListener((v, on) -> { Store.putB("al_" + t + "_on", on); Alarms.schedule(this); });
-        row.addView(cb, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(Ui.toggle(this, th, t + " 근무일 알람", Alarms.enabled(t), on -> { Store.putB("al_" + t + "_on", on); Alarms.schedule(this); }),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         int m = Alarms.minutes(t);
-        Button tb = new Button(this);
-        tb.setAllCaps(false);
-        tb.setText(String.format("%02d:%02d", m / 60, m % 60));
-        tb.setOnClickListener(v -> {
+        TextView[] tb = new TextView[1];
+        tb[0] = Ui.btn(this, th, String.format("%02d:%02d", m / 60, m % 60), false, v -> {
             int cur = Alarms.minutes(t);
             new TimePickerDialog(this, (view, h, mi) -> {
                 Store.putI("al_" + t + "_min", h * 60 + mi);
-                tb.setText(String.format("%02d:%02d", h, mi));
+                tb[0].setText(String.format("%02d:%02d", h, mi));
                 Alarms.schedule(this);
             }, cur / 60, cur % 60, true).show();
         });
-        row.addView(tb);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(12), 0, 0, 0);
+        row.addView(tb[0], lp);
         return row;
     }
 
-    interface IntCb { void run(int i); }
-
-    private View choiceRow(String[] names, int cur, IntCb cb) {
-        LinearLayout row = new LinearLayout(this);
-        Button[] bs = new Button[names.length];
-        for (int i = 0; i < names.length; i++) {
-            Button bt = new Button(this);
-            bt.setAllCaps(false);
-            bt.setText(names[i]);
-            bt.setAlpha(i == cur ? 1f : 0.45f);
-            final int ix = i;
-            bs[i] = bt;
-            bt.setOnClickListener(v -> {
-                for (int j = 0; j < bs.length; j++) bs[j].setAlpha(j == ix ? 1f : 0.45f);
-                cb.run(ix);
-            });
-            row.addView(bt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        }
-        return row;
-    }
-
-    private View check(String s, String key, boolean def) {
-        CheckBox cb = new CheckBox(this);
-        cb.setText(s);
-        cb.setTextColor(th.fg);
-        cb.setChecked(Store.getB(key, def));
-        cb.setOnCheckedChangeListener((v, on) -> { Store.putB(key, on); dataChanged(); });
-        return cb;
-    }
-
-    private View seek(String s, String key, float min, float max, float def) {
-        LinearLayout l = new LinearLayout(this);
-        l.setOrientation(LinearLayout.VERTICAL);
-        l.addView(label(s));
-        SeekBar sb = new SeekBar(this);
-        sb.setMax(100);
-        sb.setProgress(Math.round((Store.getF(key, def) - min) / (max - min) * 100));
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar x, int p, boolean u) { if (u) Store.putF(key, min + (max - min) * p / 100f); }
-            public void onStartTrackingTouch(SeekBar x) { }
-            public void onStopTrackingTouch(SeekBar x) { dataChanged(); }
-        });
-        l.addView(sb);
-        return l;
+    private View slider(String s, String key, float min, float max, float def) {
+        return Ui.slider(this, th, s, min, max, Store.getF(key, def), v -> { Store.putF(key, v); });
     }
 
     // ---------- 백업 파일 ----------
@@ -561,43 +631,8 @@ public class MainActivity extends Activity {
     private LinearLayout vbox() {
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(dp(18), dp(12), dp(18), dp(12));
+        l.setPadding(dp(14), dp(10), dp(14), dp(10));
         return l;
-    }
-
-    private TextView tv(String s, int sp, int color) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setTextColor(color);
-        return t;
-    }
-
-    private TextView section(String s) {
-        TextView t = tv(s, 15, th.todayStroke);
-        t.setTypeface(null, android.graphics.Typeface.BOLD);
-        t.setPadding(0, dp(22), 0, dp(4));
-        return t;
-    }
-
-    private TextView label(String s) {
-        TextView t = tv(s, 13, th.sub);
-        t.setPadding(0, dp(8), 0, dp(2));
-        return t;
-    }
-
-    private View space(int h) {
-        View v = new View(this);
-        v.setLayoutParams(new LinearLayout.LayoutParams(1, dp(h)));
-        return v;
-    }
-
-    private Button button(String s, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setAllCaps(false);
-        b.setText(s);
-        b.setOnClickListener(l);
-        return b;
     }
 
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }

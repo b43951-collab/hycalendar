@@ -4,6 +4,7 @@ import android.graphics.Color;
 
 final class Theme {
     int bg, fg, sub, line, sun, sat, todayFill, todayStroke, meRing, mateRing, a, b, c, off, leave;
+    int page, card, soft, band, offText, orange;
     boolean dark;
 
     static final String[] NAMES = {"auto", "light", "dark", "black", "midnight", "ocean", "forest", "rose", "sand"};
@@ -35,10 +36,16 @@ final class Theme {
         t.todayFill = Color.argb(45, 41, 121, 255);
         t.meRing = Color.parseColor("#2979FF");
         t.mateRing = Color.parseColor("#FF7043");
-        t.a = Color.parseColor("#F2B705");
-        t.b = Color.parseColor("#EF6C00");
-        t.c = Color.parseColor("#5C6BC0");
+        t.a = Color.parseColor("#FFD400");
+        t.b = Color.parseColor("#5B87E8");
+        t.c = Color.parseColor(t.dark ? "#8A8A8F" : "#3D3D3D");
         t.off = Color.parseColor("#8E8E93");
+        t.offText = Color.parseColor(t.dark ? "#FF7A93" : "#E04A6A");
+        t.orange = Color.parseColor("#E8600A");
+        t.band = Color.parseColor(t.dark ? "#4A2A33" : "#FCE4E8");
+        t.card = t.bg;
+        t.page = blend(t.bg, t.fg, t.dark ? 0.06f : 0.05f);
+        t.soft = blend(t.bg, t.fg, t.dark ? 0.14f : 0.08f);
         t.leave = Color.parseColor(t.dark ? "#81C784" : "#2E7D32");
         return t;
     }
@@ -50,6 +57,12 @@ final class Theme {
             case 'C': return c;
             default: return off;
         }
+    }
+
+    static int blend(int a, int b, float t) {
+        return Color.rgb((int) (Color.red(a) * (1 - t) + Color.red(b) * t),
+                (int) (Color.green(a) * (1 - t) + Color.green(b) * t),
+                (int) (Color.blue(a) * (1 - t) + Color.blue(b) * t));
     }
 
     static int onColor(int bg) {

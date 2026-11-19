@@ -10,7 +10,7 @@ final class Opts {
     float dateSize = 1f, shiftSize = 1f, mateScale = 0.8f, memoSize = 1f, gapDS = 0.1f, gapSM = 0.1f;
     int lunar = 1;      // 0 끔, 1 초하루·보름, 2 전체
     int shape = 0;      // 0 원, 1 둥근 사각, 2 사각
-    boolean monStart, fixed6, lines = true, showMemo = true, holiday = true, drawBg = true;
+    boolean monStart, fixed6, lines = true, showMemo = true, holiday = true, drawBg = true, widgetStyle = false;
 
     static boolean systemDark(Context c) {
         return (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
@@ -25,6 +25,7 @@ final class Opts {
         Store.init(c);
         Opts o = new Opts();
         o.mode = mode;
+        o.widgetStyle = !pfx.isEmpty();
         o.me = Store.getI("grp_me", 1);
         o.mate = Store.getI("grp_mate", 4);
         o.dateSize = f(pfx, "s_date", 1f);
@@ -37,7 +38,7 @@ final class Opts {
         o.shape = Store.getI("shape", 0);
         o.monStart = Store.getB("monstart", false);
         o.holiday = Store.getB("holiday", true);
-        o.lines = b(pfx, "lines", true);
+        o.lines = pfx.isEmpty() && Store.getB("lines", true);
         o.showMemo = b(pfx, "showmemo", true);
         o.fixed6 = b(pfx, "fixed6", false);
         String tn = Store.getS("theme", "auto");
