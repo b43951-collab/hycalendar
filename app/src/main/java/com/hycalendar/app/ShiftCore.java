@@ -1,0 +1,20 @@
+package com.hycalendar.app;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+
+/** 하이닉스 4조3교대(6근 2휴) 근무 계산. 안드로이드 의존성 없음. */
+public final class ShiftCore {
+    private ShiftCore() {}
+
+    /** A 6일, 휴 2일, B 6일, 휴 2일, C 6일, 휴 2일 = 24일 주기 */
+    private static final char[] SEQ = "AAAAAAOOBBBBBBOOCCCCCCOO".toCharArray();
+    /** 1조가 이 날짜에 A 첫째 날이다. */
+    private static final LocalDate ANCHOR = LocalDate.of(2027, 1, 10);
+
+    /** group: 1~4. 반환: 'A','B','C','O'(휴) */
+    public static char typeFor(int group, LocalDate d) {
+        long diff = ChronoUnit.DAYS.between(ANCHOR, d) + (group - 1) * 6L;
+        return SEQ[(int) Math.floorMod(diff, 24L)];
+    }
+}
