@@ -158,7 +158,17 @@ final class DayUi {
             e.setPadding(dp(4), dp(8), 0, 0);
             box.addView(e);
         }
-        for (Memos.Memo m : list) box.addView(memoRow(m, true));
+        for (Memos.Memo m : list) {
+            box.addView(memoRow(m, true, v -> new android.app.AlertDialog.Builder(act)
+                    .setTitle("메모 삭제")
+                    .setMessage("이 메모를 삭제할까요?\n" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text))
+                    .setPositiveButton("삭제", (x, w) -> {
+                        Memos.delete(m.id);
+                        Alarms.schedule(act);
+                        changed.run();
+                        render();
+                    }).setNegativeButton("취소", null).show()));
+        }
     }
 
     private View memoRow(Memos.Memo m, boolean showDate) { return memoRow(m, showDate, null); }
@@ -228,7 +238,7 @@ final class DayUi {
                     LinearLayout row = new LinearLayout(act);
                     row.setGravity(Gravity.CENTER_VERTICAL);
                     row.addView(Ui.text(act, t == null ? u.key : t.label, 16, th.orange, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-                    row.addView(Ui.btn(act, th, "삭제", false, v -> {
+                    if (wf == 0) row.addView(Ui.btn(act, th, "삭제", false, v -> {
                         Store.removeUse(u.id);
                         toast("취소했어요. 잔여가 복원됐어요");
                         changed.run();
@@ -237,11 +247,11 @@ final class DayUi {
                     box.addView(row);
                 }
             }
-            if (sh != 'O' && sh != 'X') {
+            if (wf == 0 && sh != 'O' && sh != 'X') {
                 LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 ml.setMargins(0, dp(14), 0, dp(4));
                 box.addView(Ui.text(act, wn + " 근태 추가 (" + (sh == 'N' ? "통상" : sh + " 근무") + ")", 13, th.sub, true), ml);
-                if (wf == 0) box.addView(shareBox(leaveShare, on -> leaveShare = on));
+                box.addView(shareBox(leaveShare, on -> leaveShare = on));
                 List<LeaveCore.Type> ok = new ArrayList<>();
                 for (LeaveCore.Type t : LeaveCore.TYPES) if (LeaveCore.allowed(t, sh)) ok.add(t);
                 for (int i = 0; i < ok.size(); i += 4) {
@@ -253,7 +263,7 @@ final class DayUi {
                         final LeaveCore.Type t = ok.get(j);
                         TextView bt = Ui.btn(act, th, t.label, false, v -> {
                             for (String k : Store.useKeysOn(day, wf)) if (k.equals(t.key)) { toast("이미 등록돼 있어요"); return; }
-                            double nb = Store.addUse(day, t, wf, wf != 0 || leaveShare);
+                            double nb = Store.addUse(day, t, wf, leaveShare);
                             if (Double.isNaN(nb)) {
                                 if (t.pool != null) toast(LeaveCore.START + "년 이전 기간은 차감 없이 기록만 해요");
                             } else if (nb < 0) toast("잔여가 부족해요 (" + nb + ")");

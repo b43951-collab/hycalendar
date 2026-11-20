@@ -290,9 +290,9 @@ final class Sync {
             if (!bal.isEmpty()) couple().collection("bals").document(me).set(bal, SetOptions.merge());
             pushProfile();
         }
-        if (!pt.isEmpty() && !pt.equals(Store.getS("synced_pt", ""))) {
-            Store.putS("synced_pt", pt);
-            for (Store.Use u : Store.allUses()) if (u.who == 1) pushUse(u);
+        if (!pt.isEmpty() && !Store.getB("purged_mate_uses", false)) {
+            Store.putB("purged_mate_uses", true);
+            for (Store.Use u : new java.util.ArrayList<>(Store.allUses())) if (u.who == 1 && !u.remote) Store.removeRemoteUse(u.id);
         }
     }
 

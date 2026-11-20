@@ -16,7 +16,7 @@ final class Store {
     private Store() {}
 
     static final class Use {
-        String id, key; LocalDate date; int who; boolean shared = true; // who: 0 나, 1 배우자
+        String id, key; LocalDate date; int who; boolean shared = true, remote = false; // who: 0 나, 1 배우자
     }
 
     private static SharedPreferences sp;
@@ -46,7 +46,7 @@ final class Store {
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.getJSONObject(i);
                 Use u = new Use();
-                u.id = o.getString("id"); u.key = o.getString("k"); u.date = LocalDate.parse(o.getString("d")); u.who = o.optInt("w", 0); u.shared = o.optBoolean("sh", true);
+                u.id = o.getString("id"); u.key = o.getString("k"); u.date = LocalDate.parse(o.getString("d")); u.who = o.optInt("w", 0); u.shared = o.optBoolean("sh", true); u.remote = o.optBoolean("rm", false);
                 l.add(u);
             }
         } catch (Exception ignored) { }
@@ -59,7 +59,7 @@ final class Store {
         try {
             for (Use u : usesCache) {
                 JSONObject o = new JSONObject();
-                o.put("id", u.id); o.put("k", u.key); o.put("d", u.date.toString()); o.put("w", u.who); o.put("sh", u.shared);
+                o.put("id", u.id); o.put("k", u.key); o.put("d", u.date.toString()); o.put("w", u.who); o.put("sh", u.shared); o.put("rm", u.remote);
                 a.put(o);
             }
         } catch (Exception ignored) { }
@@ -98,7 +98,7 @@ final class Store {
         Use hit = null;
         for (Use x : loadUses()) if (x.id.equals(id)) hit = x;
         if (hit == null) { hit = new Use(); hit.id = id; loadUses().add(hit); }
-        hit.key = key; hit.date = date; hit.who = who;
+        hit.key = key; hit.date = date; hit.who = who; hit.remote = true;
         saveUses();
     }
 
