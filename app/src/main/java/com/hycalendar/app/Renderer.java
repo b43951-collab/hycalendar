@@ -43,7 +43,7 @@ final class Renderer {
         return g;
     }
 
-    private static final class Line { String t; int color; Line(String t, int c) { this.t = t; this.color = c; } }
+    private static final class Line { String t; int color, bg; Line(String t, int c) { this.t = t; this.color = c; } Line(String t, int c, int bg) { this.t = t; this.color = c; this.bg = bg; } }
 
     // ===== 부부 / 4개조: 주 단위 표 (날짜 줄 + 조별 줄) =====
     private static final class GL {
@@ -350,9 +350,8 @@ final class Renderer {
             if (t != null && !(t.off && t.pool != null && off)) items.add(new Line(t.label, th.orange));
         }
         for (Memos.Memo mm : Memos.forDate(date)) {
-            int col = mm.color >= 0 && mm.color < Theme.PALETTE.length && Theme.PALETTE[mm.color] != 0 ? Theme.PALETTE[mm.color] : th.fg;
-            if (mm.todo && mm.done) col = th.sub;
-            for (String s : mm.text.split("\n")) if (!s.trim().isEmpty()) items.add(new Line(s.trim(), col));
+            int col = mm.color != 0 ? mm.color : th.fg;
+            for (String s : mm.text.split("\n")) if (!s.trim().isEmpty()) items.add(new Line(s.trim(), col, mm.bg));
         }
 
         p.setTypeface(Typeface.DEFAULT);
@@ -361,13 +360,19 @@ final class Renderer {
         float maxW = cw - 2 * pad;
         List<String> texts = new ArrayList<>();
         List<Integer> cols = new ArrayList<>();
+        List<Integer> bgs = new ArrayList<>();
         for (Line ln : items) {
-            for (String piece : wrap(p, ln.t, maxW)) { texts.add(piece); cols.add(ln.color); }
+            for (String piece : wrap(p, ln.t, maxW)) { texts.add(piece); cols.add(ln.color); bgs.add(ln.bg); }
         }
         float tx = ws ? cx + cw / 2 : cx + pad;
         for (int i = 0; i < texts.size() && i < maxLines; i++) {
             String s = texts.get(i);
             if (i == maxLines - 1 && texts.size() > maxLines) s = cut(p, s + "…", maxW);
+            if (bgs.get(i) != 0) {
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(bgs.get(i));
+                c.drawRect(cx + 1, cursor + i * lineH, cx + cw - 1, cursor + (i + 1) * lineH, p);
+            }
             p.setColor(cols.get(i));
             c.drawText(s, tx, cursor + (i + 1) * lineH - memoSz * 0.25f, p);
         }

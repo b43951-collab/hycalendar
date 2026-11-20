@@ -17,16 +17,17 @@ final class Memos {
 
     static final class Memo {
         String id = "", text = "", url = "", label = "";
-        int color = -1, bg = -1;           // Theme.PALETTE 번호, -1 기본
+        int color = 0, bg = 0;             // ARGB 색, 0이면 기본/없음
         boolean todo, done, allDay = true;
         LocalDate start = LocalDate.now(), end = null; // end==null: 반복 메모는 종료 없음, 일반 메모는 하루
         int sMin = 540, eMin = 600;        // 하루 종일이 아닐 때 시간
         int notify = -1;                   // 알림 시각(하루 중 분), -1 없음
-        String repShift = "";              // 근무에 반복: A B C O(휴) L(휴가)
+        String repShift = "";              // 근무에 반복: A B C O(휴)
         int repDow;                        // 요일에 반복: bit0=일 … bit6=토
-        boolean repMonth;                  // 날짜에 반복: 매월 같은 날
+        int repDate;                       // 날짜에 반복: 0 없음, 1 매월, 2 매년
+        boolean repLunar;                  // 날짜 반복을 음력 기준으로
 
-        boolean repeats() { return !repShift.isEmpty() || repDow != 0 || repMonth; }
+        boolean repeats() { return !repShift.isEmpty() || repDow != 0 || repDate != 0; }
     }
 
     private static List<Memo> cache;
@@ -98,27 +99,35 @@ final class Memos {
     private static JSONObject toJson(Memo m) throws Exception {
         JSONObject o = new JSONObject();
         o.put("id", m.id); o.put("t", m.text); o.put("u", m.url); o.put("l", m.label);
-        o.put("c", m.color); o.put("bg", m.bg); o.put("td", m.todo); o.put("dn", m.done); o.put("ad", m.allDay);
+        o.put("c2", m.color); o.put("bg2", m.bg); o.put("td", m.todo); o.put("dn", m.done); o.put("ad", m.allDay);
         o.put("s", m.start.toString()); o.put("e", m.end == null ? "" : m.end.toString());
         o.put("sm", m.sMin); o.put("em", m.eMin); o.put("n", m.notify);
-        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rm", m.repMonth);
+        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdt", m.repDate); o.put("rl", m.repLunar);
         return o;
     }
 
     private static Memo fromJson(JSONObject o) throws Exception {
         Memo m = new Memo();
         m.id = o.getString("id"); m.text = o.optString("t"); m.url = o.optString("u"); m.label = o.optString("l");
-        m.color = o.optInt("c", -1); m.bg = o.optInt("bg", -1); m.todo = o.optBoolean("td"); m.done = o.optBoolean("dn");
+        if (o.has("c2")) { m.color = o.optInt("c2", 0); m.bg = o.optInt("bg2", 0); }
+        else { // 예전 팔레트 번호 → 색
+            int c = o.optInt("c", -1), b = o.optInt("bg", -1);
+            if (c >= 0 && c < Theme.PALETTE.length) m.color = Theme.PALETTE[c];
+            if (b >= 0 && b < Theme.PALETTE.length && Theme.PALETTE[b] != 0) m.bg = Theme.blend(0xFFFFFFFF, Theme.PALETTE[b], 0.2f) | 0xFF000000;
+        }
+        m.todo = o.optBoolean("td"); m.done = o.optBoolean("dn");
         m.allDay = o.optBoolean("ad", true);
         m.start = LocalDate.parse(o.getString("s"));
         String e = o.optString("e");
         m.end = e.isEmpty() ? null : LocalDate.parse(e);
         m.sMin = o.optInt("sm", 540); m.eMin = o.optInt("em", 600); m.notify = o.optInt("n", -1);
-        m.repShift = o.optString("rs"); m.repDow = o.optInt("rd"); m.repMonth = o.optBoolean("rm");
+        m.repShift = o.optString("rs").replace("L", ""); m.repDow = o.optInt("rd");
+        m.repDate = o.has("rdt") ? o.optInt("rdt") : (o.optBoolean("rm") ? 1 : 0);
+        m.repLunar = o.optBoolean("rl");
         return m;
     }
 
-    /** 내 근무 기준 분류: A B C 휴(O) 휴가(L) */
+    /** 내 근무 분류 (알람용): A B C 휴(O) 휴가(L) */
     static char cat(LocalDate d) {
         if (LeaveCore.isOff(Store.useKeysOn(d))) return 'L';
         return ShiftCore.typeFor(Store.getI("grp_me", 1), d);
@@ -131,11 +140,20 @@ final class Memos {
         }
         if (d.isBefore(m.start)) return false;
         if (m.end != null && d.isAfter(m.end)) return false;
-        if (d.equals(m.start)) return true;
-        if (m.repDow != 0 && (m.repDow & (1 << (d.getDayOfWeek().getValue() % 7))) != 0) return true;
-        if (m.repMonth && d.getDayOfMonth() == m.start.getDayOfMonth()) return true;
-        if (!m.repShift.isEmpty() && m.repShift.indexOf(cat(d)) >= 0) return true;
-        return false;
+        // 고른 조건을 모두 만족해야 한다 (AND)
+        if (!m.repShift.isEmpty() && m.repShift.indexOf(ShiftCore.typeFor(Store.getI("grp_me", 1), d)) < 0) return false;
+        if (m.repDow != 0 && (m.repDow & (1 << (d.getDayOfWeek().getValue() % 7))) == 0) return false;
+        if (m.repDate != 0) {
+            if (m.repLunar) {
+                Lunar.Res a = Lunar.of(d), s = Lunar.of(m.start);
+                if (a.d != s.d) return false;
+                if (m.repDate == 2 && (a.m != s.m || a.leap != s.leap)) return false;
+            } else {
+                if (d.getDayOfMonth() != m.start.getDayOfMonth()) return false;
+                if (m.repDate == 2 && d.getMonthValue() != m.start.getMonthValue()) return false;
+            }
+        }
+        return true;
     }
 
     static List<Memo> forDate(LocalDate d) {

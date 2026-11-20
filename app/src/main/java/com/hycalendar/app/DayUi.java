@@ -103,7 +103,7 @@ final class DayUi {
         l.setPadding(dp(4), dp(4), dp(4), 0);
         TextView t = Ui.text(act, label, 20, th.sub, true);
         t.setTag("t");
-        l.addView(t);
+        l.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         View u = new View(act);
         u.setTag("u");
         LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(dp(26), dp(3));
@@ -161,58 +161,31 @@ final class DayUi {
         for (Memos.Memo m : list) box.addView(memoRow(m, true));
     }
 
-    private View memoRow(Memos.Memo m, boolean showDate) {
+    private View memoRow(Memos.Memo m, boolean showDate) { return memoRow(m, showDate, null); }
+
+    private View memoRow(Memos.Memo m, boolean showDate, View.OnClickListener onDelete) {
         LinearLayout row = new LinearLayout(act);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(12), dp(10), dp(12), dp(10));
-        int fill = m.bg >= 0 && Theme.PALETTE[m.bg] != 0 ? Theme.tint(th, m.bg) : th.soft;
-        row.setBackground(Ui.round(fill, 14));
+        row.setPadding(dp(12), dp(10), dp(8), dp(10));
+        row.setBackground(Ui.round(m.bg != 0 ? m.bg : th.soft, 14));
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rp.setMargins(0, dp(4), 0, dp(4));
         row.setLayoutParams(rp);
 
-        if (m.todo) {
-            TextView cb = Ui.text(act, m.done ? "✓" : "", 14, Color.WHITE, true);
-            cb.setGravity(Gravity.CENTER);
-            GradientDrawable g = new GradientDrawable();
-            g.setShape(GradientDrawable.OVAL);
-            g.setColor(m.done ? th.todayStroke : 0);
-            g.setStroke(dp(2), m.done ? th.todayStroke : th.sub);
-            cb.setBackground(g);
-            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(26), dp(26));
-            cp.setMargins(0, 0, dp(10), 0);
-            cb.setOnClickListener(v -> {
-                m.done = !m.done;
-                Memos.save(m);
-                changed.run();
-                render();
-            });
-            row.addView(cb, cp);
-        }
-
         LinearLayout col = new LinearLayout(act);
         col.setOrientation(LinearLayout.VERTICAL);
-        int tc = m.color >= 0 && Theme.PALETTE[m.color] != 0 ? Theme.PALETTE[m.color] : th.fg;
-        if (m.bg >= 0 && Theme.PALETTE[m.bg] != 0 && m.color < 0) tc = th.fg;
-        TextView t = Ui.text(act, m.text.isEmpty() ? "(내용 없음)" : m.text, 16, m.todo && m.done ? th.sub : tc, false);
-        if (m.todo && m.done) t.setPaintFlags(t.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
-        col.addView(t);
+        TextView t = Ui.text(act, m.text.isEmpty() ? "(내용 없음)" : m.text, 16, m.color != 0 ? m.color : th.fg, false);
+        col.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         String meta = meta(m, showDate);
-        if (!meta.isEmpty()) col.addView(Ui.text(act, meta, 11, th.sub, false));
-        if (!m.url.isEmpty()) {
-            TextView u = Ui.text(act, m.url, 12, th.todayStroke, false);
-            u.setPaintFlags(u.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
-            u.setSingleLine(true);
-            u.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            u.setOnClickListener(v -> {
-                try {
-                    String s = m.url.contains("://") ? m.url : "https://" + m.url;
-                    act.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(s)));
-                } catch (Exception e) { toast("링크를 열 수 없어요"); }
-            });
-            col.addView(u);
-        }
+        if (!meta.isEmpty()) col.addView(Ui.text(act, meta, 11, th.sub, false), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (onDelete != null) {
+            TextView del = Ui.text(act, "삭제", 13, th.sun, true);
+            del.setPadding(dp(12), dp(8), dp(12), dp(8));
+            del.setBackground(Ui.round(th.card, 12));
+            del.setOnClickListener(onDelete);
+            row.addView(del);
+        }
         row.setOnClickListener(v -> openEditor(m, m.start));
         return row;
     }
@@ -328,6 +301,12 @@ final class DayUi {
         box.setPadding(dp(14), dp(4), dp(14), dp(24));
         sv.addView(box);
         root.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        fillAll(dlg, box);
+        dlg.show();
+    }
+
+    private void fillAll(Dialog dlg, LinearLayout box) {
+        box.removeAllViews();
         List<Memos.Memo> all = Memos.sorted();
         if (all.isEmpty()) {
             TextView e = Ui.text(act, "메모가 없어요", 14, th.sub, false);
@@ -336,17 +315,22 @@ final class DayUi {
             box.addView(e);
         }
         for (Memos.Memo m : all) {
-            View r = memoRow(m, false);
+            View r = memoRow(m, false, v -> new android.app.AlertDialog.Builder(act)
+                    .setTitle("메모 삭제")
+                    .setMessage("이 메모를 삭제할까요?\n" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text))
+                    .setPositiveButton("삭제", (x, w) -> {
+                        Memos.delete(m.id);
+                        Alarms.schedule(act);
+                        changed.run();
+                        fillAll(dlg, box);
+                        if (sheet != null && sheet.isShowing()) render();
+                    }).setNegativeButton("취소", null).show());
             r.setOnClickListener(v -> { dlg.dismiss(); openEditor(m, m.start); });
             box.addView(r);
         }
-        dlg.show();
     }
 
     // ================= 메모 입력 =================
-    private int pal(int idx) { return idx < 0 ? Theme.PALETTE.length - 1 : idx; }
-    private int unpal(int i) { return i >= Theme.PALETTE.length - 1 ? -1 : i; }
-
     private EditText field(String hint, String text, int minLines) {
         EditText e = new EditText(act);
         e.setHint(hint);
@@ -386,7 +370,7 @@ final class DayUi {
         } else {
             m.id = src.id; m.text = src.text; m.url = src.url; m.label = src.label; m.color = src.color; m.bg = src.bg;
             m.todo = src.todo; m.done = src.done; m.allDay = src.allDay; m.start = src.start; m.end = src.end;
-            m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.repShift = src.repShift; m.repDow = src.repDow; m.repMonth = src.repMonth;
+            m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.repShift = src.repShift; m.repDow = src.repDow; m.repDate = src.repDate; m.repLunar = src.repLunar;
         }
 
         LinearLayout root = new LinearLayout(act);
@@ -395,7 +379,6 @@ final class DayUi {
         final Dialog dlg = Ui.fullDialog(act, th, root);
 
         final EditText txt = field("메모 내용", m.text, 4);
-        final EditText url = field("URL (선택)", m.url, 1);
         final EditText lab = field("라벨 (선택)", m.label, 1);
 
         LinearLayout bar = new LinearLayout(act);
@@ -410,7 +393,6 @@ final class DayUi {
         bar.addView(tt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         bar.addView(Ui.btn(act, th, "저장", true, v -> {
             m.text = txt.getText().toString().trim();
-            m.url = url.getText().toString().trim();
             m.label = lab.getText().toString().trim().replace("#", "");
             if (m.text.isEmpty()) { toast("내용을 입력하세요"); return; }
             if (m.end != null && m.end.isBefore(m.start)) m.end = m.start;
@@ -432,18 +414,30 @@ final class DayUi {
         // 내용 + 색
         LinearLayout c1 = Ui.card(act, th);
         c1.addView(txt);
-        TextView l1 = Ui.text(act, "글자색", 13, th.sub, true);
-        l1.setPadding(0, dp(10), 0, 0);
-        c1.addView(l1);
-        c1.addView(Ui.swatches(act, th, pal(m.color), i -> m.color = unpal(i)));
-        c1.addView(Ui.text(act, "배경색", 13, th.sub, true));
-        c1.addView(Ui.swatches(act, th, pal(m.bg), i -> m.bg = unpal(i)));
+        // 색: 글자색 / 배경색 한 줄
+        LinearLayout cr = new LinearLayout(act);
+        cr.setGravity(Gravity.CENTER_VERTICAL);
+        cr.setPadding(0, dp(12), 0, dp(4));
+        cr.addView(Ui.text(act, "색", 16, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView ta = Ui.text(act, "글자", 14, th.sub, true);
+        ta.setPaintFlags(ta.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        cr.addView(ta);
+        final ColorUi.Dot textDot = ColorUi.dot(act, th, m.color, true);
+        LinearLayout.LayoutParams dp1 = new LinearLayout.LayoutParams(dp(34), dp(34));
+        dp1.setMargins(dp(8), 0, dp(22), 0);
+        textDot.setOnClickListener(v -> ColorUi.pick(act, th, m.color, true, c -> { m.color = c; textDot.set(c); }));
+        cr.addView(textDot, dp1);
+        cr.addView(Ui.text(act, "배경", 14, th.sub, true));
+        final ColorUi.Dot bgDot = ColorUi.dot(act, th, m.bg, false);
+        LinearLayout.LayoutParams dp2 = new LinearLayout.LayoutParams(dp(34), dp(34));
+        dp2.setMargins(dp(8), 0, 0, 0);
+        bgDot.setOnClickListener(v -> ColorUi.pick(act, th, m.bg, false, c -> { m.bg = c; bgDot.set(c); }));
+        cr.addView(bgDot, dp2);
+        c1.addView(cr);
         box.addView(c1);
 
-        // URL, 할 일, 라벨
+        // 라벨
         LinearLayout c2 = Ui.card(act, th);
-        c2.addView(url);
-        c2.addView(Ui.toggle(act, th, "할 일", m.todo, on -> m.todo = on));
         c2.addView(lab);
         box.addView(c2);
 
@@ -498,15 +492,15 @@ final class DayUi {
         c3.addView(nr);
         box.addView(c3);
 
-        // 반복
+        // 반복 (고른 조건을 모두 만족하는 날만)
         LinearLayout c4 = Ui.card(act, th);
         c4.addView(Ui.text(act, "근무에 반복", 14, th.fg, true));
-        char[] codes = {'A', 'B', 'C', 'O', 'L'};
-        boolean[] ss = new boolean[5];
-        for (int i = 0; i < 5; i++) ss[i] = m.repShift.indexOf(codes[i]) >= 0;
-        c4.addView(Ui.chips(act, th, new String[]{"A", "B", "C", "휴", "휴가"}, ss, () -> {
+        char[] codes = {'A', 'B', 'C', 'O'};
+        boolean[] ss = new boolean[4];
+        for (int i = 0; i < 4; i++) ss[i] = m.repShift.indexOf(codes[i]) >= 0;
+        c4.addView(Ui.chips(act, th, new String[]{"A", "B", "C", "휴"}, ss, () -> {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 5; i++) if (ss[i]) sb.append(codes[i]);
+            for (int i = 0; i < 4; i++) if (ss[i]) sb.append(codes[i]);
             m.repShift = sb.toString();
         }));
         TextView l4 = Ui.text(act, "요일에 반복", 14, th.fg, true);
@@ -519,8 +513,17 @@ final class DayUi {
             for (int i = 0; i < 7; i++) if (ds[i]) mk |= 1 << i;
             m.repDow = mk;
         }));
-        c4.addView(Ui.toggle(act, th, "날짜에 반복 (매월 같은 날)", m.repMonth, on -> m.repMonth = on));
-        TextView rn = Ui.text(act, "근무 반복은 내 근무 기준이고, 시작일부터 적용돼요.", 11, th.sub, false);
+        TextView l5 = Ui.text(act, "날짜에 반복", 14, th.fg, true);
+        l5.setPadding(0, dp(8), 0, 0);
+        c4.addView(l5);
+        final View lunarRow = Ui.toggle(act, th, "음력 기준 (시작일의 음력 날짜로 반복)", m.repLunar, on -> m.repLunar = on);
+        lunarRow.setVisibility(m.repDate != 0 ? View.VISIBLE : View.GONE);
+        c4.addView(Ui.segmented(act, th, new String[]{"안 함", "매월", "매년"}, m.repDate, i -> {
+            m.repDate = i;
+            lunarRow.setVisibility(i != 0 ? View.VISIBLE : View.GONE);
+        }));
+        c4.addView(lunarRow);
+        TextView rn = Ui.text(act, "근무·요일·날짜를 함께 고르면 모두 맞는 날에만 표시돼요. 예) A + 일요일 = A조 근무인 일요일. 시작일 이후부터 적용돼요.", 11, th.sub, false);
         c4.addView(rn);
         box.addView(c4);
 
