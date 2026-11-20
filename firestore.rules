@@ -4,6 +4,12 @@ service cloud.firestore { match /databases/{database}/documents {
   function isMember(cid){return signedIn() && request.auth.uid in get(/databases/$(database)/documents/couples/$(cid)).data.members;}
   match /users/{uid}{ allow read: if signedIn(); allow write: if signedIn() && request.auth.uid==uid; }
   match /codes/{code}{ allow read: if signedIn(); allow create: if signedIn(); }
+  // 전체 사용자 공용 게시판 (오류 제보 등): 로그인한 누구나 읽기·쓰기, 수정·삭제는 작성자만
+  match /posts/{pid}{
+    allow read: if signedIn();
+    allow create: if signedIn() && request.resource.data.o==request.auth.uid;
+    allow update, delete: if signedIn() && resource.data.o==request.auth.uid;
+  }
   match /couples/{cid}{
     allow read: if signedIn() && (request.auth.uid in resource.data.members || resource.data.members.size()<6);
     allow create: if signedIn() && request.resource.data.members==[request.auth.uid];

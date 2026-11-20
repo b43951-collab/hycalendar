@@ -382,8 +382,8 @@ final class Sync {
     /** 게시글을 실시간으로 받는다. 반환값을 실행하면 구독이 끝난다. */
     static Runnable listenPosts(PostsCb cb) {
         try {
-            if (!active()) return () -> { };
-            final ListenerRegistration r = couple().collection("posts")
+            if (!loggedIn()) return () -> { };
+            final ListenerRegistration r = db().collection("posts")
                     .orderBy("ts", com.google.firebase.firestore.Query.Direction.DESCENDING).limit(100)
                     .addSnapshotListener((qs, e) -> {
                         if (e != null || qs == null) return;
@@ -409,14 +409,14 @@ final class Sync {
 
     static void addPost(String text, List<String> photos, Done cb) {
         try {
-            if (!active()) { cb.run("서버에 연결돼 있지 않아요"); return; }
+            if (!loggedIn()) { cb.run("로그인이 필요해요"); return; }
             Map<String, Object> d = new HashMap<>();
             d.put("o", uid());
-            d.put("n", displayName());
+            d.put("n", boardName());
             d.put("t", text);
             d.put("ts", System.currentTimeMillis());
             d.put("ph", photos);
-            couple().collection("posts").add(d)
+            db().collection("posts").add(d)
                     .addOnSuccessListener(r -> cb.run(null))
                     .addOnFailureListener(e -> cb.run(errText(e)));
         } catch (Throwable t) { cb.run("실패했어요"); }
@@ -424,7 +424,7 @@ final class Sync {
 
     static void updatePost(String id, String text, Done cb) {
         try {
-            couple().collection("posts").document(id).update("t", text)
+            db().collection("posts").document(id).update("t", text)
                     .addOnSuccessListener(r -> cb.run(null))
                     .addOnFailureListener(e -> cb.run(errText(e)));
         } catch (Throwable t) { cb.run("실패했어요"); }
@@ -432,7 +432,7 @@ final class Sync {
 
     static void deletePost(String id, Done cb) {
         try {
-            couple().collection("posts").document(id).delete()
+            db().collection("posts").document(id).delete()
                     .addOnSuccessListener(r -> cb.run(null))
                     .addOnFailureListener(e -> cb.run(errText(e)));
         } catch (Throwable t) { cb.run("실패했어요"); }

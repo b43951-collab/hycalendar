@@ -63,7 +63,7 @@ final class BoardUi {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(18), dp(14), dp(14), dp(8));
         bar.addView(Ui.text(act, "게시판", 24, th.fg, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        boolean ready = Sync.configured() && Sync.active();
+        boolean ready = Sync.configured() && Sync.loggedIn();
         if (ready) bar.addView(Ui.btn(act, th, "글쓰기", true, v -> compose()));
         root.addView(bar);
 
@@ -75,7 +75,7 @@ final class BoardUi {
         root.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         if (!ready) {
-            TextView t = Ui.text(act, !Sync.configured() ? "서버 설정 전이에요." : "설정에서 로그인하고 가족과 연결하면 게시판을 쓸 수 있어요.", 14, th.sub, false);
+            TextView t = Ui.text(act, !Sync.configured() ? "서버 설정 전이에요." : "설정에서 로그인하면 게시판을 볼 수 있어요.", 14, th.sub, false);
             t.setGravity(Gravity.CENTER);
             t.setPadding(0, dp(60), 0, 0);
             list.addView(t);
