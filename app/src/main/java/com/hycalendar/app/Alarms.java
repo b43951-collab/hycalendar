@@ -36,6 +36,14 @@ public class Alarms extends BroadcastReceiver {
     }
 
     static void schedule(Context c) {
+        try {
+            doSchedule(c);
+        } catch (Throwable t) {
+            // 알람 예약 실패가 앱을 멈추게 하지 않도록
+        }
+    }
+
+    private static void doSchedule(Context c) {
         Store.init(c);
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;
@@ -55,7 +63,11 @@ public class Alarms extends BroadcastReceiver {
             if (at <= now) continue;
             String name = t == 'A' ? "A조 근무" : t == 'B' ? "B조 근무" : "C조 근무";
             PendingIntent p2 = pi(c, 1000 + off, "오늘 " + name + " (" + String.format("%02d:%02d", mins / 60, mins % 60) + ")");
-            am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, show), p2);
+            try {
+                am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, show), p2);
+            } catch (Throwable e) {
+                try { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p2); } catch (Throwable ignored) { }
+            }
         }
     }
 

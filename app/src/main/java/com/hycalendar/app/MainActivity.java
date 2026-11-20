@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         }
         buildUi();
-        Alarms.schedule(this);
+        try { Alarms.schedule(this); } catch (Throwable ignored) { }
         WidgetBase.updateAll(this);
     }
 
@@ -232,8 +232,7 @@ public class MainActivity extends Activity {
 
                 @Override public boolean onSingleTapUp(MotionEvent e) {
                     Opts o = Opts.load(MainActivity.this, "", CalView.this.mode);
-                    Renderer.Grid g = Renderer.grid(getWidth(), getHeight(), ym, o);
-                    LocalDate d = g.cellAt(e.getX(), e.getY());
+                    LocalDate d = Renderer.cellAt(getWidth(), getHeight(), ym, o, e.getX(), e.getY());
                     if (d != null) showDay(d);
                     return true;
                 }

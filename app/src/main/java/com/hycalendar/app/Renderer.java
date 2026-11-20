@@ -45,7 +45,139 @@ final class Renderer {
 
     private static final class Line { String t; int color; Line(String t, int c) { this.t = t; this.color = c; } }
 
+    // ===== 부부 / 4개조: 주 단위 표 (날짜 줄 + 조별 줄) =====
+    private static final class GL {
+        float labelW, cw, hdrH, rowH, gap, dateH; int weeks, offset, per;
+        float blockH() { return dateH + per * rowH + gap; }
+    }
+
+    private static GL gl(int w, int h, YearMonth ym, Opts o) {
+        GL g = new GL();
+        g.per = o.mode == COUPLE ? 2 : 4;
+        int dow = ym.atDay(1).getDayOfWeek().getValue();
+        g.offset = o.monStart ? dow - 1 : dow % 7;
+        g.weeks = o.fixed6 ? 6 : (g.offset + ym.lengthOfMonth() + 6) / 7;
+        g.labelW = w * 0.115f;
+        g.cw = (w - g.labelW) / 7f;
+        g.gap = h * 0.005f;
+        float rowH = (h - g.weeks * g.gap) / (0.55f + g.weeks * (0.5f + g.per));
+        g.rowH = Math.min(rowH, g.cw * 1.1f);
+        g.hdrH = g.rowH * 0.55f;
+        g.dateH = g.rowH * 0.5f;
+        return g;
+    }
+
+    /** 터치 위치의 날짜 (모드에 맞는 배치 기준) */
+    static LocalDate cellAt(int w, int h, YearMonth ym, Opts o, float x, float y) {
+        if (o.widgetStyle || o.mode == SINGLE) return grid(w, h, ym, o).cellAt(x, y);
+        GL g = gl(w, h, ym, o);
+        if (x < g.labelW || y < g.hdrH) return null;
+        int col = (int) ((x - g.labelW) / g.cw);
+        int week = (int) ((y - g.hdrH) / g.blockH());
+        if (col < 0 || col > 6 || week < 0 || week >= g.weeks) return null;
+        return ym.atDay(1).plusDays((long) week * 7 + col - g.offset);
+    }
+
+    private static void drawGroups(Context ctx, Canvas c, int w, int h, YearMonth ym, Opts o) {
+        Theme th = o.theme;
+        GL g = gl(w, h, ym, o);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        if (o.drawBg) c.drawColor(th.bg);
+        LocalDate today = LocalDate.now();
+        LocalDate first = ym.atDay(1);
+
+        p.setTextAlign(Paint.Align.CENTER);
+        p.setTextSize(g.hdrH * 0.62f);
+        for (int i = 0; i < 7; i++) {
+            int d = o.monStart ? (i + 1) % 7 : i;
+            p.setColor(d == 0 ? th.sun : d == 6 ? th.sat : th.fg);
+            c.drawText(DOW[d], g.labelW + g.cw * i + g.cw / 2, g.hdrH * 0.78f, p);
+        }
+
+        for (int wk = 0; wk < g.weeks; wk++) {
+            float y0 = g.hdrH + wk * g.blockH();
+            // 조별 줄 배경 + 라벨
+            for (int r = 0; r < g.per; r++) {
+                int grp = o.mode == COUPLE ? (r == 0 ? o.me : o.mate) : r + 1;
+                boolean isMe = o.mode == COUPLE ? r == 0 : grp == o.me;
+                boolean isMate = o.mode == COUPLE ? r == 1 : grp == o.mate;
+                float ry = y0 + g.dateH + r * g.rowH;
+                if (isMe || isMate) {
+                    p.setStyle(Paint.Style.FILL);
+                    p.setColor(isMe ? th.rowMe : th.rowMate);
+                    c.drawRect(0, ry, w, ry + g.rowH, p);
+                }
+                p.setStyle(Paint.Style.FILL);
+                p.setTextAlign(Paint.Align.CENTER);
+                p.setTypeface(Typeface.DEFAULT);
+                p.setColor(th.fg);
+                String lab = o.mode == COUPLE ? (r == 0 ? "나" : "배우자") : grp + "조";
+                p.setTextSize(Math.min(g.rowH * 0.4f, g.labelW * (lab.length() > 2 ? 0.34f : 0.46f)));
+                c.drawText(lab, g.labelW / 2, ry + g.rowH * 0.5f + p.getTextSize() * 0.35f, p);
+            }
+            // 요일별 칸
+            for (int col = 0; col < 7; col++) {
+                LocalDate date = first.plusDays((long) wk * 7 + col - g.offset);
+                boolean inMonth = date.getMonthValue() == ym.getMonthValue();
+                float cx = g.labelW + col * g.cw;
+                int save = -1;
+                if (!inMonth) save = c.saveLayerAlpha(cx, y0, cx + g.cw, y0 + g.blockH(), 85);
+
+                String hol = o.holiday ? Holidays.name(date) : "";
+                int rd = date.getDayOfWeek().getValue() % 7;
+                p.setStyle(Paint.Style.FILL);
+                p.setTypeface(Typeface.DEFAULT);
+                p.setTextAlign(Paint.Align.CENTER);
+                p.setColor((!hol.isEmpty() || rd == 0) ? th.sun : rd == 6 ? th.sat : th.fg);
+                float dsz = Math.min(g.dateH * 0.66f, g.cw * 0.34f) * o.dateSize;
+                p.setTextSize(dsz);
+                c.drawText(String.valueOf(date.getDayOfMonth()), cx + g.cw / 2, y0 + g.dateH * 0.5f + dsz * 0.36f, p);
+
+                List<String> keys = Store.useKeysOn(date);
+                boolean off = LeaveCore.isOff(keys);
+                String offLabel = "휴가";
+                for (String k : keys) {
+                    LeaveCore.Type t = LeaveCore.type(k);
+                    if (t != null && t.off && t.pool == null) { offLabel = t.label; break; }
+                }
+                for (int r = 0; r < g.per; r++) {
+                    int grp = o.mode == COUPLE ? (r == 0 ? o.me : o.mate) : r + 1;
+                    boolean isMe = o.mode == COUPLE ? r == 0 : grp == o.me;
+                    float cs = Math.min(g.rowH * 0.74f, g.cw * 0.62f) * o.shiftSize * ((o.mode == COUPLE && r == 1) ? o.mateScale : 1f);
+                    cs = Math.min(cs, g.rowH * 0.92f);
+                    float ry = y0 + g.dateH + r * g.rowH;
+                    drawChip(c, p, th, cx + g.cw / 2, ry + (g.rowH - cs) / 2f, cs, g.cw * 0.92f,
+                            ShiftCore.typeFor(grp, date), isMe && off, offLabel, 0, o.shape);
+                }
+                if (save >= 0) c.restoreToCount(save);
+            }
+            // 구분선
+            p.setStyle(Paint.Style.FILL);
+            if (o.lines) {
+                p.setColor(th.line);
+                for (int r = 0; r <= g.per; r++) {
+                    float ly = y0 + g.dateH + r * g.rowH;
+                    c.drawRect(0, ly - 0.5f, w, ly + 0.5f, p);
+                }
+                c.drawRect(g.labelW - 0.5f, y0 + g.dateH, g.labelW + 0.5f, y0 + g.dateH + g.per * g.rowH, p);
+            }
+            p.setColor(th.page);
+            c.drawRect(0, y0 + g.dateH + g.per * g.rowH, w, y0 + g.blockH(), p);
+            // 오늘: 그 주 세로 테두리
+            for (int col = 0; col < 7; col++) {
+                if (!first.plusDays((long) wk * 7 + col - g.offset).equals(today)) continue;
+                float cx = g.labelW + col * g.cw;
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(3f, g.cw * 0.03f));
+                p.setColor(th.todayStroke);
+                c.drawRect(cx + 1.5f, y0 + 1.5f, cx + g.cw - 1.5f, y0 + g.dateH + g.per * g.rowH - 1.5f, p);
+                p.setStyle(Paint.Style.FILL);
+            }
+        }
+    }
+
     static void draw(Context ctx, Canvas c, int w, int h, YearMonth ym, Opts o) {
+        if (!o.widgetStyle && o.mode != SINGLE) { drawGroups(ctx, c, w, h, ym, o); return; }
         Theme th = o.theme;
         Grid g = grid(w, h, ym, o);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);

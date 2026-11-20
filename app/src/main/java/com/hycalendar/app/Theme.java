@@ -4,7 +4,7 @@ import android.graphics.Color;
 
 final class Theme {
     int bg, fg, sub, line, sun, sat, todayFill, todayStroke, meRing, mateRing, a, b, c, off, leave;
-    int page, card, soft, band, offText, orange;
+    int page, card, soft, band, offText, orange, rowMe, rowMate;
     boolean dark;
 
     static final String[] NAMES = {"auto", "light", "dark", "black", "midnight", "ocean", "forest", "rose", "sand"};
@@ -43,6 +43,8 @@ final class Theme {
         t.offText = Color.parseColor(t.dark ? "#FF7A93" : "#E04A6A");
         t.orange = Color.parseColor("#E8600A");
         t.band = Color.parseColor(t.dark ? "#4A2A33" : "#FCE4E8");
+        t.rowMe = Color.parseColor(t.dark ? "#3A3720" : "#FFF8D8");
+        t.rowMate = Color.parseColor(t.dark ? "#40291F" : "#FFE9DB");
         t.card = t.bg;
         t.page = blend(t.bg, t.fg, t.dark ? 0.06f : 0.05f);
         t.soft = blend(t.bg, t.fg, t.dark ? 0.14f : 0.08f);
