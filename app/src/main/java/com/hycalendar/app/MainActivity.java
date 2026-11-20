@@ -76,7 +76,7 @@ public class MainActivity extends Activity {
                 try { Alarms.schedule(this); } catch (Throwable ignored) { }
                 WidgetBase.updateAll(this);
                 if (cal != null) cal.invalidate();
-                if (tab == 2 || tab == 3) showTab(tab);
+                if (tab == 1 || tab == 2 || tab == 3) showTab(tab);
             }));
         } catch (Throwable ignored) { }
         buildUi();
@@ -252,13 +252,16 @@ public class MainActivity extends Activity {
                 cal = new CalView(Renderer.SINGLE);
                 content.addView(cal, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             } else {
-                int sub = Store.getI("grp_sub", 0);
+                final boolean mate = hasMate();
+                int sub = mate ? Store.getI("grp_sub", 0) : 1;   // 배우자가 없으면 부부 탭 없이 4개조만
                 LinearLayout col = new LinearLayout(this);
                 col.setOrientation(LinearLayout.VERTICAL);
-                View seg = Ui.segmented(this, th, new String[]{"부부", "4개조"}, sub, ix -> { Store.putI("grp_sub", ix); showTab(1); });
-                LinearLayout.LayoutParams sp = (LinearLayout.LayoutParams) seg.getLayoutParams();
-                sp.setMargins(dp(14), dp(2), dp(14), dp(6));
-                col.addView(seg);
+                if (mate) {
+                    View seg = Ui.segmented(this, th, new String[]{"부부", "4개조"}, sub, ix -> { Store.putI("grp_sub", ix); showTab(1); });
+                    LinearLayout.LayoutParams sp = (LinearLayout.LayoutParams) seg.getLayoutParams();
+                    sp.setMargins(dp(14), dp(2), dp(14), dp(6));
+                    col.addView(seg);
+                }
                 cal = new CalView(sub == 0 ? Renderer.COUPLE : Renderer.FOUR);
                 col.addView(cal, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
                 content.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -270,6 +273,9 @@ public class MainActivity extends Activity {
             content.addView(i == 2 ? buildLeave() : i == 3 ? buildAlarm() : i == 4 ? boardUi.build() : buildSettings());
         }
     }
+
+    /** 사내 부부(배우자)가 연결돼 있을 때만 배우자 관련 화면을 보여 준다. */
+    private boolean hasMate() { return !Sync.partner().isEmpty(); }
 
     private void refreshTitle() { title.setText(ym.getYear() + ". " + ym.getMonthValue()); }
 
@@ -353,7 +359,8 @@ public class MainActivity extends Activity {
         yr.addView(yt, new LinearLayout.LayoutParams(0, dp(32), 1));
         yr.addView(n, new LinearLayout.LayoutParams(dp(48), dp(32)));
         top.addView(yr);
-        top.addView(Ui.segmented(this, th, new String[]{"나", "배우자"}, leaveWho, i -> { leaveWho = i; showTab(2); }));
+        if (hasMate()) top.addView(Ui.segmented(this, th, new String[]{"나", "배우자"}, leaveWho, i -> { leaveWho = i; showTab(2); }));
+        else leaveWho = 0;
         box.addView(top);
 
         final int who = leaveWho;
@@ -454,15 +461,19 @@ public class MainActivity extends Activity {
         LinearLayout g = Ui.card(this, th);
         g.addView(Ui.text(this, "나", 13, th.sub, false));
         g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); Sync.pushProfile(); dataChanged(); }));
-        g.addView(Ui.text(this, "배우자", 13, th.sub, false));
-        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
+        if (hasMate()) {
+            g.addView(Ui.text(this, "배우자", 13, th.sub, false));
+            g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
+        }
         g.addView(Ui.text(this, "나 줄 배경색", 13, th.sub, false));
         g.addView(Ui.swatches(this, th, Store.getI("c_me", 0), i -> { Store.putI("c_me", i); dataChanged(); }));
-        g.addView(Ui.text(this, "배우자 줄 배경색", 13, th.sub, false));
-        g.addView(Ui.swatches(this, th, Store.getI("c_mate", 1), i -> { Store.putI("c_mate", i); dataChanged(); }));
+        if (hasMate()) {
+            g.addView(Ui.text(this, "배우자 줄 배경색", 13, th.sub, false));
+            g.addView(Ui.swatches(this, th, Store.getI("c_mate", 1), i -> { Store.putI("c_mate", i); dataChanged(); }));
+        }
         box.addView(g);
 
-        box.addView(Ui.sectionTitle(this, th, "서버·부부 연결"));
+        box.addView(Ui.sectionTitle(this, th, "사내 부부 / 가족 연결"));
         box.addView(SyncUi.card(this, th, this::refreshSettings));
 
         box.addView(Ui.sectionTitle(this, th, "앱 업데이트"));

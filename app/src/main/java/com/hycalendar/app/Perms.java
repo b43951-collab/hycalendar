@@ -28,6 +28,7 @@ final class Perms {
     static final class Row {
         String title, why;
         boolean ok;
+        boolean essential = true;   // 알람이 제대로 울리는 데 꼭 필요한 권한이면 true
         Runnable fix;
     }
 
@@ -96,6 +97,7 @@ final class Perms {
         Row u = new Row();
         u.title = "앱 설치 허용";
         u.why = "앱 안에서 새 버전으로 업데이트하려면 필요해요";
+        u.essential = false;
         u.ok = a.getPackageManager().canRequestPackageInstalls();
         u.fix = () -> open(a, new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, pkg(a)), new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg(a)));
         l.add(u);
@@ -107,9 +109,22 @@ final class Perms {
         return true;
     }
 
-    /** 처음 설치했거나 이 안내가 새로 생긴 버전이고 빠진 권한이 있을 때만 true */
+    static boolean essentialMissing(Activity a) {
+        for (Row r : rows(a)) if (r.essential && !r.ok) return true;
+        return false;
+    }
+
+    private static long nextAt() {
+        try { return Long.parseLong(Store.getS("perm_next", "0")); } catch (Exception e) { return 0; }
+    }
+
+    /**
+     * 앱을 열 때 권한 창을 띄울지: 처음이거나 안내가 새로 생긴 버전이면 한 번,
+     * 그 뒤에는 필수 권한이 빠져 있는 동안 '나중에'를 누른 지 24시간이 지나면 다시.
+     */
     static boolean needGuide(Activity a) {
-        return Store.getI("perm_guide_ver", 0) < VER && !allOk(a);
+        if (Store.getI("perm_guide_ver", 0) < VER && !allOk(a)) return true;
+        return essentialMissing(a) && System.currentTimeMillis() >= nextAt();
     }
 
     /** 설정에서 돌아왔을 때 화면의 ✓/허용 표시를 다시 그린다. */
@@ -162,6 +177,8 @@ final class Perms {
         dlg.setOnDismissListener(d -> {
             rebuild = null;
             Store.putI("perm_guide_ver", VER);
+            // 필수 권한이 아직 빠져 있으면 24시간 뒤 앱을 열 때 다시 안내한다
+            Store.putS("perm_next", essentialMissing(a) ? String.valueOf(System.currentTimeMillis() + 24L * 3600_000L) : "0");
             if (after != null) after.run();
         });
         dlg.show();
