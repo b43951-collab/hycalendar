@@ -371,6 +371,12 @@ final class Sync {
     }
 
     // ---------- 게시판 ----------
+    /** 공개 게시판 작성자명: 설정한 이름만 쓰고, 없으면 이메일 대신 "익명". */
+    static String boardName() {
+        String n = Store.getS("dname", "");
+        return n.isEmpty() ? "익명" : n;
+    }
+
     static final class Post {
         String id = "", o = "", n = "", t = "";
         long ts;
