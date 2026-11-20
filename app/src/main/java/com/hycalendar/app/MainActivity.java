@@ -301,6 +301,7 @@ public class MainActivity extends Activity {
     private void refreshTitle() { title.setText(ym.getYear() + ". " + ym.getMonthValue()); }
 
     private void moveMonth(int d) {
+        if (cal != null && cal.getWidth() > 0) { cal.slide(d); return; }
         ym = ym.plusMonths(d);
         refreshTitle();
         if (cal != null) cal.invalidate();
@@ -322,6 +323,11 @@ public class MainActivity extends Activity {
     private class CalView extends View {
         private final int mode;
         private final GestureDetector gd;
+        private float offX = 0;            // 드래그/애니메이션 중 가로 이동량(px)
+        private boolean dragging = false, animating = false;
+        private float downX, downY;
+        private android.view.VelocityTracker vt;
+        private android.animation.ValueAnimator anim;
 
         CalView(int mode) {
             super(MainActivity.this);
@@ -330,29 +336,95 @@ public class MainActivity extends Activity {
                 @Override public boolean onDown(MotionEvent e) { return true; }
 
                 @Override public boolean onSingleTapUp(MotionEvent e) {
+                    if (animating) return true;
                     Opts o = Opts.load(MainActivity.this, "", CalView.this.mode);
                     LocalDate d = Renderer.cellAt(getWidth(), getHeight(), ym, o, e.getX(), e.getY());
                     if (d != null) showDay(d);
                     return true;
                 }
-
-                @Override public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
-                    if (e1 == null || e2 == null) return false;
-                    float dx = e2.getX() - e1.getX(), dy = e2.getY() - e1.getY();
-                    if (Math.abs(dx) > dp(70) && Math.abs(dx) > Math.abs(dy) * 1.5f) {
-                        moveMonth(dx < 0 ? 1 : -1);
-                        return true;
-                    }
-                    return false;
-                }
             });
         }
 
-        @Override public boolean onTouchEvent(MotionEvent e) { return gd.onTouchEvent(e); }
+        /** 화살표 등으로 d달(±1) 슬라이드 이동 */
+        void slide(int d) {
+            if (animating) return;
+            animateTo(-d * (float) getWidth(), d);
+        }
+
+        private void animateTo(float target, final int monthDelta) {
+            if (anim != null) anim.cancel();
+            animating = true;
+            anim = android.animation.ValueAnimator.ofFloat(offX, target);
+            anim.setDuration(240);
+            anim.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+            anim.addUpdateListener(a -> { offX = (float) a.getAnimatedValue(); invalidate(); });
+            anim.addListener(new android.animation.AnimatorListenerAdapter() {
+                boolean canceled = false;
+                @Override public void onAnimationCancel(android.animation.Animator an) { canceled = true; }
+                @Override public void onAnimationEnd(android.animation.Animator an) {
+                    if (canceled) return;
+                    if (monthDelta != 0) { ym = ym.plusMonths(monthDelta); refreshTitle(); }
+                    offX = 0;
+                    animating = false;
+                    invalidate();
+                }
+            });
+            anim.start();
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            if (animating) return true;
+            if (vt == null) vt = android.view.VelocityTracker.obtain();
+            vt.addMovement(e);
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downX = e.getX(); downY = e.getY(); dragging = false;
+                    break;
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = e.getX() - downX, dy = e.getY() - downY;
+                    if (!dragging && Math.abs(dx) > dp(12) && Math.abs(dx) > Math.abs(dy) * 1.3f) {
+                        dragging = true;
+                        getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                    if (dragging) { offX = dx; invalidate(); return true; }
+                    break;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (dragging) {
+                        vt.computeCurrentVelocity(1000);
+                        float vx = vt.getXVelocity(), w = getWidth();
+                        vt.recycle(); vt = null;
+                        dragging = false;
+                        boolean go = e.getActionMasked() == MotionEvent.ACTION_UP && (Math.abs(offX) > w * 0.25f || Math.abs(vx) > 900);
+                        if (go) {
+                            int d = (Math.abs(vx) > 900 ? vx < 0 : offX < 0) ? 1 : -1;
+                            animateTo(-d * w, d);
+                        } else animateTo(0, 0);
+                        return true;
+                    }
+                    vt.recycle(); vt = null;
+                    break;
+            }
+            return gd.onTouchEvent(e);
+        }
 
         @Override protected void onDraw(Canvas c) {
             Opts o = Opts.load(MainActivity.this, "", mode);
-            Renderer.draw(MainActivity.this, c, getWidth(), getHeight(), ym, o);
+            int w = getWidth(), h = getHeight();
+            if (offX == 0) { Renderer.draw(MainActivity.this, c, w, h, ym, o); return; }
+            c.save();
+            c.clipRect(0, 0, w, h);
+            c.translate(offX, 0);
+            Renderer.draw(MainActivity.this, c, w, h, ym, o);
+            c.restore();
+            // 옆에서 따라 들어오는 달
+            int d = offX < 0 ? 1 : -1;
+            c.save();
+            c.clipRect(0, 0, w, h);
+            c.translate(offX + (offX < 0 ? w : -w), 0);
+            Renderer.draw(MainActivity.this, c, w, h, ym.plusMonths(d), o);
+            c.restore();
         }
     }
 

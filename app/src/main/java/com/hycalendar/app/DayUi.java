@@ -501,9 +501,9 @@ final class DayUi {
         timeBox.addView(labelRow("종료 시간", eTime));
         c3.addView(timeBox);
 
-        final TextView sd = valueBtn(dateText(m.start));
+        final TextView sd = valueBtn(startText(m.start));
         final TextView ed = valueBtn(m.end == null ? "없음" : dateText(m.end));
-        sd.setOnClickListener(v -> new DatePickerDialog(act, (vw, y, mo, dd) -> { m.start = LocalDate.of(y, mo + 1, dd); sd.setText(dateText(m.start)); },
+        sd.setOnClickListener(v -> new DatePickerDialog(act, (vw, y, mo, dd) -> { m.start = LocalDate.of(y, mo + 1, dd); sd.setText(startText(m.start)); },
                 m.start.getYear(), m.start.getMonthValue() - 1, m.start.getDayOfMonth()).show());
         ed.setOnClickListener(v -> {
             LocalDate b = m.end == null ? m.start : m.end;
@@ -632,6 +632,12 @@ final class DayUi {
             box.addView(del);
         }
         dlg.show();
+    }
+
+    /** 시작일: 날짜 + 음력 */
+    private String startText(LocalDate d) {
+        Lunar.Res lr = Lunar.of(d);
+        return dateText(d) + "\n음력 " + (lr.leap ? "윤" : "") + lr.m + "." + lr.d;
     }
 
     private String dateText(LocalDate d) {
