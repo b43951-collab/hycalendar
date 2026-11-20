@@ -350,7 +350,7 @@ public class MainActivity extends Activity {
         LinearLayout pc = Ui.card(this, th);
         pc.setPadding(dp(14), dp(4), dp(14), dp(4));
         for (String pool : LeaveCore.POOLS) {
-            double bal = Store.bal(pool, leaveYear, who), used = Store.used(pool, leaveYear, who);
+            double grant = Store.bal(pool, leaveYear, who), used = Store.used(pool, leaveYear, who), rem = grant - used;
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(0, dp(7), 0, dp(7));
@@ -359,14 +359,15 @@ public class MainActivity extends Activity {
             LinearLayout nm = new LinearLayout(this);
             nm.setGravity(Gravity.CENTER_VERTICAL);
             nm.addView(Ui.text(this, LeaveCore.poolName(pool), 15, th.fg, true));
-            TextView bl = Ui.text(this, "  잔여 " + fmt(bal), 14, bal < 0 ? th.sun : th.todayStroke, true);
+            TextView bl = Ui.text(this, "  잔여 " + fmt(rem), 14, rem < 0 ? th.sun : th.todayStroke, true);
             nm.addView(bl);
             left.addView(nm);
-            left.addView(Ui.text(this, LeaveCore.periodText(pool, leaveYear).replace("20", "").replace(" ~ ", "~") + " · 사용 " + fmt(used), 11, th.sub, false));
+            left.addView(Ui.text(this, "발생 " + fmt(grant) + " − 사용 " + fmt(used), 12, th.fg, false));
+            left.addView(Ui.text(this, LeaveCore.periodText(pool, leaveYear).replace("20", "").replace(" ~ ", "~"), 11, th.sub, false));
             row.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
             EditText et = new EditText(this);
             et.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            et.setText(fmt(bal));
+            et.setText(fmt(grant));
             et.setTextSize(14);
             et.setTextColor(th.fg);
             et.setBackground(Ui.round(th.soft, 8));
@@ -374,11 +375,12 @@ public class MainActivity extends Activity {
             et.setGravity(Gravity.END);
             LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.WRAP_CONTENT);
             ep.setMargins(0, 0, dp(6), 0);
+            row.addView(Ui.text(this, "발생", 12, th.sub, false), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             row.addView(et, ep);
             TextView sb = Ui.btn(this, th, "저장", true, v -> {
                 try {
                     Store.setBal(pool, leaveYear, who, Double.parseDouble(et.getText().toString().trim()));
-                    toast(leaveYear + "년 잔여를 저장했어요");
+                    toast(leaveYear + "년 발생 개수를 저장했어요");
                     showTab(2);
                 } catch (Exception e) { toast("숫자를 입력하세요"); }
             });
@@ -391,7 +393,7 @@ public class MainActivity extends Activity {
             pc.addView(dv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
         }
         box.addView(pc);
-        TextView note = Ui.text(this, "연차 기간은 전년 12.18~금년 12.17, 그 외 1.1~12.31 기준 · 1개=8시간 (0.5 오전/오후, 0.25 2시간, 0.125 1시간)", 11, th.sub, false);
+        TextView note = Ui.text(this, "입력칸은 그해 '발생' 개수(고정)이고, 잔여 = 발생 − 사용으로 자동 계산돼요.\n연차 기간은 전년 12.18~금년 12.17, 그 외 1.1~12.31 기준 · 1개=8시간 (0.5 오전/오후, 0.25 2시간, 0.125 1시간)", 11, th.sub, false);
         note.setPadding(dp(6), 0, dp(6), dp(8));
         box.addView(note);
 

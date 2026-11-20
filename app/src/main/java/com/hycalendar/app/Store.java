@@ -24,6 +24,30 @@ final class Store {
 
     static synchronized void init(Context c) {
         if (sp == null) sp = c.getApplicationContext().getSharedPreferences("hy", Context.MODE_PRIVATE);
+        migrateGrant();
+    }
+
+    /**
+     * 예전에는 입력칸 값이 사용 때마다 줄어드는 '잔여'였다. 이제 입력칸은 그해 '발생' 개수로 고정이고
+     * 잔여 = 발생 - 사용으로 계산한다. 예전 값(잔여)에 사용량을 더해 발생으로 한 번만 바꾼다. (내 값만, 배우자 값은 배우자 폰이 올려 준다)
+     */
+    static synchronized void migrateGrant() {
+        try {
+            if (sp.getBoolean("grant_mig1", false)) return;
+            List<String> keys = new ArrayList<>();
+            for (String k : sp.getAll().keySet()) if (k.startsWith("bal_")) keys.add(k);
+            for (String k : keys) {
+                int us = k.lastIndexOf('_');
+                if (us <= 4) continue;
+                String pool = k.substring(4, us);
+                int y;
+                try { y = Integer.parseInt(k.substring(us + 1)); } catch (Exception e) { continue; }
+                if (y < LeaveCore.START) continue;
+                double grant = sp.getFloat(k, 0f) + used(pool, y, 0);
+                setBal(pool, y, 0, grant);
+            }
+            sp.edit().putBoolean("grant_mig1", true).apply();
+        } catch (Throwable ignored) { }
     }
 
     static SharedPreferences prefs() { return sp; }
@@ -86,6 +110,8 @@ final class Store {
 
     private static String balKey(String pool, int y, int who) { return (who == 0 ? "bal_" : "mbal_") + pool + "_" + y; }
     static double bal(String pool, int y, int who) { return sp.getFloat(balKey(pool, y, who), 0f); }
+    /** 잔여 = 발생(입력값) - 사용 */
+    static double remain(String pool, int y, int who) { return bal(pool, y, who) - used(pool, y, who); }
     static void setBal(String pool, int y, int who, double v) {
         sp.edit().putFloat(balKey(pool, y, who), (float) v).apply();
         Sync.pushBal(pool, y, who, v);
@@ -124,11 +150,7 @@ final class Store {
         Sync.pushUse(u);
         if (t.pool != null) {
             int py = LeaveCore.pyear(t.pool, d);
-            if (py >= LeaveCore.START) {
-                double nb = bal(t.pool, py, who) - t.amt;
-                setBal(t.pool, py, who, nb);
-                return nb;
-            }
+            if (py >= LeaveCore.START) return remain(t.pool, py, who);
         }
         return Double.NaN;
     }
@@ -140,11 +162,6 @@ final class Store {
         loadUses().remove(hit);
         saveUses();
         Sync.delUse(id);
-        LeaveCore.Type t = LeaveCore.type(hit.key);
-        if (t != null && t.pool != null) {
-            int py = LeaveCore.pyear(t.pool, hit.date);
-            if (py >= LeaveCore.START) setBal(t.pool, py, hit.who, bal(t.pool, py, hit.who) + t.amt);
-        }
     }
 
     static synchronized double used(String pool, int y, int who) {
@@ -194,6 +211,7 @@ final class Store {
             }
             ed.commit();
             usesCache = null;
+            migrateGrant();
             Memos.reset();
             Alarms.reset();
             return true;
