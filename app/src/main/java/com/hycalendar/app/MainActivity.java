@@ -517,17 +517,38 @@ public class MainActivity extends Activity {
         b1.setMargins(0, 0, dp(6), 0);
         LinearLayout.LayoutParams b2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         b2.setMargins(dp(6), 0, 0, 0);
-        br.addView(Ui.btn(this, th, "파일로 내보내기", false, v -> {
-            Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json")
-                    .putExtra(Intent.EXTRA_TITLE, "hycalendar_backup_" + LocalDate.now() + ".json");
-            startActivityForResult(i, REQ_EXPORT);
+        br.addView(Ui.btn(this, th, "서버에 백업하기", false, v -> {
+            if (!Sync.loggedIn()) { toast("먼저 로그인하세요"); return; }
+            toast("서버에 올리는 중…");
+            Sync.backupToServer(Store.exportJson(), e -> runOnUiThread(() -> {
+                if (e != null) { toast(e); return; }
+                Store.putS("srv_bk", new java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.KOREA).format(new java.util.Date()));
+                toast("서버에 백업했어요");
+                showTab(5);
+            }));
         }), b1);
-        br.addView(Ui.btn(this, th, "파일에서 불러오기", false, v -> {
-            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
-            startActivityForResult(i, REQ_IMPORT);
+        br.addView(Ui.btn(this, th, "서버에서 복원하기", false, v -> {
+            if (!Sync.loggedIn()) { toast("먼저 로그인하세요"); return; }
+            toast("서버에서 가져오는 중…");
+            Sync.restoreFromServer((json, ts, err) -> runOnUiThread(() -> {
+                if (err != null) { toast(err); return; }
+                String when = new java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.KOREA).format(new java.util.Date(ts));
+                new AlertDialog.Builder(this).setTitle("서버에서 복원").setMessage(when + "에 올린 백업으로 바꿉니다. 현재 데이터는 내부 백업으로 먼저 저장해 둡니다.")
+                        .setPositiveButton("복원", (d, w) -> {
+                            try {
+                                File f = new File(getFilesDir(), "backup_before_restore_" + System.currentTimeMillis() + ".json");
+                                try (FileOutputStream o = new FileOutputStream(f)) { o.write(Store.exportJson().getBytes(StandardCharsets.UTF_8)); }
+                            } catch (Exception ignored) { }
+                            if (Store.importJson(json)) {
+                                toast("복원했어요");
+                                dataChanged();
+                                recreate();
+                            } else toast("올바른 백업이 아니에요");
+                        }).setNegativeButton("취소", null).show();
+            }));
         }), b2);
         bc.addView(br);
-        TextView note = Ui.text(this, "앱을 업데이트해도 메모·일정·설정은 그대로 유지되고, 버전이 바뀔 때 자동으로 내부 백업을 남깁니다.", 12, th.sub, false);
+        TextView note = Ui.text(this, "마지막 서버 백업: " + Store.getS("srv_bk", "없음") + "\n백업은 로그인한 계정에만 저장되고 나만 볼 수 있어요. 폰을 바꾸면 같은 계정으로 로그인한 뒤 '서버에서 복원하기'를 누르세요.\n앱을 업데이트해도 메모·일정·설정은 그대로 유지되고, 버전이 바뀔 때 자동으로 내부 백업을 남깁니다.", 12, th.sub, false);
         note.setPadding(0, dp(8), 0, 0);
         bc.addView(note);
         box.addView(bc);

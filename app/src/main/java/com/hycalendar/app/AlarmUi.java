@@ -227,6 +227,7 @@ final class AlarmUi {
         bar.addView(Ui.btn(act, th, "저장", true, v -> {
             if (it.shifts.isEmpty() && it.dow == 0) { toast("근무 또는 요일을 하나 이상 골라 주세요"); return; }
             it.on = true;
+            Alarms.rememberDefaults(it);
             Alarms.save(it);
             Alarms.schedule(act);
             dlg.dismiss();

@@ -96,7 +96,30 @@ public class Alarms extends BroadcastReceiver {
         Item it = new Item();
         it.id = 0;
         it.shifts = "A";
+        LocalTime now = LocalTime.now();
+        it.min = now.getHour() * 60 + now.getMinute();   // 새 알람은 현재 시각으로 시작
+        if (Store.getB("ad_set", false)) {                // 지난번 알람 설정을 기본값으로
+            it.dayOff = Store.getI("ad_dayoff", 0);
+            it.autoOff = Store.getI("ad_auto", 5);
+            it.snoozeMin = Store.getI("ad_snz", 0);
+            it.snoozeCnt = Store.getI("ad_cnt", 1);
+            it.cheer = Store.getS("ad_cheer", "");
+            it.vib = Store.getB("ad_vib", true);
+            it.sound = Store.getS("ad_sound", "");
+        }
         return it;
+    }
+
+    /** 저장한 알람의 설정을 기억해 두었다가 다음 새 알람의 기본값으로 쓴다. */
+    static void rememberDefaults(Item it) {
+        Store.putI("ad_dayoff", it.dayOff);
+        Store.putI("ad_auto", it.autoOff);
+        Store.putI("ad_snz", it.snoozeMin);
+        Store.putI("ad_cnt", it.snoozeCnt);
+        Store.putS("ad_cheer", it.cheer);
+        Store.putB("ad_vib", it.vib);
+        Store.putS("ad_sound", it.sound);
+        Store.putB("ad_set", true);
     }
 
     static synchronized void save(Item it) {

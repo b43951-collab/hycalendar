@@ -121,16 +121,67 @@ final class SyncUi {
         dlg.show();
     }
 
+    /** 연결 방식 선택: 배우자(사내 부부) 또는 가족. sel[0] = 0 배우자, 1 가족, -1 아직 선택 안 함 */
+    private static View roleBox(Activity a, Theme th, final int[] sel) {
+        LinearLayout l = new LinearLayout(a);
+        l.setOrientation(LinearLayout.VERTICAL);
+        TextView t = Ui.text(a, "나는 이 연결에서", 13, th.fg, true);
+        t.setPadding(0, 0, 0, dp(6));
+        l.addView(t);
+        final TextView hint = Ui.text(a, hintFor(sel[0]), 12, th.sub, false);
+        hint.setPadding(dp(2), dp(6), 0, dp(10));
+        l.addView(Ui.segmented(a, th, new String[]{"배우자(사내 부부)", "가족"}, sel[0], i -> { sel[0] = i; hint.setText(hintFor(i)); }));
+        l.addView(hint);
+        return l;
+    }
+
+    private static String hintFor(int i) {
+        if (i == 0) return "배우자도 하이닉스 교대근무자라서 서로의 근무조·근태를 함께 봐요. 배우자는 최대 1명이에요.";
+        if (i == 1) return "배우자가 없거나 사내 부부가 아니에요. 메모·근태·게시판만 공유하고, 근무조 줄에는 나만 나와요.";
+        return "배우자(같은 회사 부부)인지, 그 외 가족인지 골라 주세요.";
+    }
+
+    /** 초대 코드 만들기 전에 내 연결 방식을 고른다 */
+    private static void createDialog(final Activity a, final Theme th, final Runnable refresh) {
+        final int[] sel = {0};
+        LinearLayout box = new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(Ui.text(a, "초대 코드 만들기", 20, th.fg, true));
+        View rb = roleBox(a, th, sel);
+        rb.setPadding(0, dp(10), 0, 0);
+        box.addView(rb);
+        LinearLayout row = new LinearLayout(a);
+        final Dialog dlg = cardDialog(a, th, box, true);
+        LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        l1.setMargins(0, 0, dp(6), 0);
+        row.addView(Ui.btn(a, th, "취소", false, v -> dlg.dismiss()), l1);
+        LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        l2.setMargins(dp(6), 0, 0, 0);
+        row.addView(Ui.btn(a, th, "코드 만들기", true, v -> {
+            dlg.dismiss();
+            Sync.createCouple(sel[0] == 0, e -> {
+                if (e != null) Toast.makeText(a, e, Toast.LENGTH_LONG).show();
+                refresh.run();
+            });
+        }), l2);
+        box.addView(row);
+        dlg.show();
+    }
+
     private static void codeDialog(Activity a, Theme th, Runnable done) {
         LinearLayout box = new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
         box.addView(Ui.text(a, "초대 코드 입력", 20, th.fg, true));
-        TextView ex = Ui.text(a, "배우자가 알려준 6자리 코드를 입력하세요.", 13, th.sub, false);
+        TextView ex = Ui.text(a, "초대해 준 사람이 알려준 6자리 코드를 입력하세요.", 13, th.sub, false);
         ex.setPadding(0, dp(6), 0, dp(12));
         box.addView(ex);
         final EditText code = field(a, th, "예) K7M2QX", false);
         code.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         box.addView(code, gap());
+        final int[] sel = {-1};
+        View rb = roleBox(a, th, sel);
+        rb.setPadding(0, dp(12), 0, 0);
+        box.addView(rb);
         final TextView err = Ui.text(a, " ", 12, th.sun, false);
         err.setPadding(dp(4), 0, 0, dp(8));
         box.addView(err);
@@ -143,13 +194,14 @@ final class SyncUi {
         ok.setOnClickListener(v -> {
             String c = code.getText().toString().trim();
             if (c.length() != 6) { err.setText("6자리 코드를 입력해 주세요"); return; }
+            if (sel[0] < 0) { err.setText("배우자인지 가족인지 골라 주세요"); return; }
             err.setText("처리 중…");
             ok.setEnabled(false);
-            Sync.joinCouple(c, e -> {
+            Sync.joinCouple(c, sel[0] == 0, e -> {
                 ok.setEnabled(true);
                 if (e != null) { err.setText(e); return; }
                 dlg.dismiss();
-                Toast.makeText(a, "배우자와 연결했어요", Toast.LENGTH_SHORT).show();
+                Toast.makeText(a, sel[0] == 0 ? "배우자로 연결했어요" : "가족으로 연결했어요", Toast.LENGTH_SHORT).show();
                 if (done != null) done.run();
             });
         });
@@ -179,7 +231,7 @@ final class SyncUi {
         c.addView(Ui.text(a, "로그인: " + Store.getS("email", ""), 15, th.fg, true));
         String cid = Sync.cid(), partner = Sync.partner();
         if (cid.isEmpty()) {
-            TextView ex = Ui.text(a, "배우자와 연결해 보세요. 한 명이 코드를 만들고, 다른 한 명이 그 코드를 입력해요.", 12, th.sub, false);
+            TextView ex = Ui.text(a, "배우자·가족과 연결해 보세요. 한 명이 코드를 만들고, 다른 사람이 그 코드를 입력해요. 연결할 때 배우자(사내 부부)인지 가족인지 골라요.", 12, th.sub, false);
             ex.setPadding(0, dp(2), 0, dp(10));
             c.addView(ex);
             LinearLayout row = new LinearLayout(a);
@@ -187,18 +239,29 @@ final class SyncUi {
             l1.setMargins(0, 0, dp(6), 0);
             LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
             l2.setMargins(dp(6), 0, 0, 0);
-            row.addView(Ui.btn(a, th, "초대 코드 만들기", true, v -> Sync.createCouple(e -> {
-                if (e != null) Toast.makeText(a, e, Toast.LENGTH_LONG).show();
-                refresh.run();
-            })), l1);
+            row.addView(Ui.btn(a, th, "초대 코드 만들기", true, v -> createDialog(a, th, refresh)), l1);
             row.addView(Ui.btn(a, th, "코드 입력", false, v -> codeDialog(a, th, refresh)), l2);
             c.addView(row);
         } else {
-            int n = Store.getI("mcount", 1);
-            String st = partner.isEmpty() ? (n > 2 ? "가족 " + n + "명 연결됨" : n == 2 ? "가족과 연결됨" : "배우자를 기다리는 중이에요")
-                    : (n > 2 ? "배우자 연결됨 · 가족 " + n + "명" : "배우자 연결됨");
+            int n = Store.getI("mcount", 1), sc = Store.getI("scount", 0);
+            boolean mine = Store.getB("is_spouse", false);
+            int fam = Math.max(0, n - sc);
+            String st;
+            if (mine) st = !partner.isEmpty() ? "배우자 연결됨" + (fam > 0 ? " · 가족 " + fam + "명" : "")
+                    : (fam > 0 ? "가족 " + fam + "명 연결됨 · 배우자를 기다리는 중이에요" : "배우자를 기다리는 중이에요");
+            else st = "가족으로 연결됨 · 전체 " + n + "명";
             c.addView(Ui.text(a, st, 14, th.todayStroke, true));
-            TextView ex = Ui.text(a, "초대 코드 (먼저 들어온 1명은 배우자, 그다음부터는 가족으로 연결돼요. 최대 " + Sync.MAX_MEMBERS + "명)", 12, th.sub, false);
+            LinearLayout rl = new LinearLayout(a);
+            rl.setGravity(Gravity.CENTER_VERTICAL);
+            rl.setPadding(0, dp(6), 0, dp(2));
+            rl.addView(Ui.text(a, "내 연결 방식: " + (mine ? "배우자(사내 부부)" : "가족"), 13, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            rl.addView(Ui.btn(a, th, "바꾸기", false, v -> Sync.setRole(!mine, e -> {
+                if (e != null) Toast.makeText(a, e, Toast.LENGTH_LONG).show();
+                else Toast.makeText(a, !mine ? "배우자로 바꿨어요" : "가족으로 바꿨어요", Toast.LENGTH_SHORT).show();
+                refresh.run();
+            })));
+            c.addView(rl);
+            TextView ex = Ui.text(a, "초대 코드 (연결할 때 배우자 또는 가족을 골라요. 최대 " + Sync.MAX_MEMBERS + "명)", 12, th.sub, false);
             ex.setPadding(0, dp(8), 0, dp(4));
             c.addView(ex);
             TextView code = Ui.text(a, Store.getS("code", ""), 28, th.todayStroke, true);

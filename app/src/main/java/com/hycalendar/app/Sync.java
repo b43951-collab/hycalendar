@@ -143,7 +143,7 @@ final class Sync {
     }
 
     // ---------- 부부 연결 ----------
-    static void createCouple(Done cb) {
+    static void createCouple(boolean spouse, Done cb) {
         if (!loggedIn()) { cb.run("먼저 로그인하세요"); return; }
         final String uid = uid();
         String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -156,6 +156,9 @@ final class Sync {
         List<String> mem = new ArrayList<>();
         mem.add(uid);
         cm.put("members", mem);
+        List<String> sps = new ArrayList<>();
+        if (spouse) sps.add(uid);
+        cm.put("spouses", sps);   // 배우자(사내 부부)로 등록된 사람들 (최대 2명). 나머지는 가족
         cm.put("code", code);
         b.set(cd, cm);
         Map<String, Object> km = new HashMap<>();
@@ -173,7 +176,7 @@ final class Sync {
         }).addOnFailureListener(e -> cb.run(errText(e)));
     }
 
-    static void joinCouple(String codeIn, Done cb) {
+    static void joinCouple(String codeIn, boolean spouse, Done cb) {
         if (!loggedIn()) { cb.run("먼저 로그인하세요"); return; }
         final String uid = uid();
         final String code = codeIn.trim().toUpperCase();
@@ -185,8 +188,13 @@ final class Sync {
                 List<String> mem = (List<String>) cd.get("members");
                 if (mem == null) { cb.run("코드를 찾을 수 없어요"); return; }
                 if (mem.size() >= MAX_MEMBERS && !mem.contains(uid)) { cb.run("가족 인원이 가득 찼어요 (최대 " + MAX_MEMBERS + "명)"); return; }
+                List<String> sp = spousesOf(cd.get("spouses"), mem);
+                if (spouse && !sp.contains(uid)) {
+                    if (sp.size() >= 2) { cb.run("이미 배우자 2명이 연결돼 있어요. 가족으로 연결해 주세요"); return; }
+                    sp.add(uid);
+                } else if (!spouse) sp.remove(uid);
                 WriteBatch b = db().batch();
-                b.update(db().collection("couples").document(cid), "members", FieldValue.arrayUnion(uid));
+                b.update(db().collection("couples").document(cid), "members", FieldValue.arrayUnion(uid), "spouses", sp);
                 Map<String, Object> um = new HashMap<>();
                 um.put("cid", cid);
                 b.set(userDoc(uid), um, SetOptions.merge());
@@ -198,6 +206,59 @@ final class Sync {
                 }).addOnFailureListener(e -> cb.run(errText(e)));
             }).addOnFailureListener(e -> cb.run(errText(e)));
         }).addOnFailureListener(e -> cb.run(errText(e)));
+    }
+
+    /** 배우자(사내 부부)로 등록된 사람 목록. 예전 방식(spouses 없음)이면 먼저 들어온 두 명이 부부. */
+    @SuppressWarnings("unchecked")
+    static List<String> spousesOf(Object raw, List<String> members) {
+        List<String> sp = new ArrayList<>();
+        if (raw instanceof List) { for (Object o : (List<Object>) raw) if (o instanceof String) sp.add((String) o); }
+        else if (members != null) sp.addAll(members.subList(0, Math.min(2, members.size())));
+        return sp;
+    }
+
+    /** 이미 연결된 뒤에 내 연결 방식을 배우자 ↔ 가족으로 바꾼다. */
+    static void setRole(boolean spouse, Done cb) {
+        if (!active()) { cb.run("먼저 연결하세요"); return; }
+        final String uid = uid();
+        final DocumentReference ref = couple();
+        ref.get().addOnSuccessListener(cd -> {
+            @SuppressWarnings("unchecked")
+            List<String> mem = (List<String>) cd.get("members");
+            List<String> sp = spousesOf(cd.get("spouses"), mem);
+            if (spouse && !sp.contains(uid)) {
+                if (sp.size() >= 2) { cb.run("이미 배우자 2명이 연결돼 있어요"); return; }
+                sp.add(uid);
+            } else if (!spouse) sp.remove(uid);
+            ref.update("spouses", sp).addOnSuccessListener(v -> cb.run(null)).addOnFailureListener(e -> cb.run(errText(e)));
+        }).addOnFailureListener(e -> cb.run(errText(e)));
+    }
+
+    // ---------- 서버 백업 ----------
+    interface RestoreCb { void run(String json, long ts, String err); }
+
+    static void backupToServer(String json, Done cb) {
+        try {
+            if (!loggedIn()) { cb.run("먼저 로그인하세요"); return; }
+            if (json.length() > 900000) { cb.run("백업 용량이 너무 커서 서버에 올릴 수 없어요"); return; }
+            Map<String, Object> d = new HashMap<>();
+            d.put("j", json);
+            d.put("ts", System.currentTimeMillis());
+            db().collection("backups").document(uid()).set(d)
+                    .addOnSuccessListener(v -> cb.run(null))
+                    .addOnFailureListener(e -> cb.run(errText(e)));
+        } catch (Throwable t) { cb.run("실패했어요"); }
+    }
+
+    static void restoreFromServer(RestoreCb cb) {
+        try {
+            if (!loggedIn()) { cb.run(null, 0, "먼저 로그인하세요"); return; }
+            db().collection("backups").document(uid()).get().addOnSuccessListener(d -> {
+                if (!d.exists() || d.getString("j") == null) { cb.run(null, 0, "서버에 저장된 백업이 없어요"); return; }
+                Long ts = d.getLong("ts");
+                cb.run(d.getString("j"), ts == null ? 0 : ts, null);
+            }).addOnFailureListener(e -> cb.run(null, 0, errText(e)));
+        } catch (Throwable t) { cb.run(null, 0, "실패했어요"); }
     }
 
     // ---------- 실시간 반영 ----------
@@ -215,8 +276,10 @@ final class Sync {
                 String me = uid(), pt = "";
                 if (mem != null) {
                     Store.putI("mcount", mem.size());
-                    int mi = mem.indexOf(me);   // 먼저 들어온 두 명이 부부, 이후 구성원은 가족
-                    if (mi >= 0 && mi < 2 && mem.size() >= 2) pt = mem.get(1 - mi);
+                    List<String> sp = spousesOf(snap.get("spouses"), mem);   // 배우자로 등록된 사람들, 나머지는 가족
+                    Store.putI("scount", sp.size());
+                    Store.putB("is_spouse", sp.contains(me));
+                    if (sp.contains(me) && sp.size() >= 2) pt = sp.get(0).equals(me) ? sp.get(1) : sp.get(0);
                 }
                 if (!pt.equals(partner())) {
                     Store.putS("partner", pt);

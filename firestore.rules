@@ -12,6 +12,8 @@ service cloud.firestore { match /databases/{database}/documents {
     allow update: if signedIn() && resource.data.o==request.auth.uid;
     allow delete: if signedIn() && (resource.data.o==request.auth.uid || isAdmin());
   }
+  // 서버 백업: 본인 계정만 읽고 쓴다
+  match /backups/{uid}{ allow read, write: if signedIn() && request.auth.uid==uid; }
   match /admins/{aid}{ allow read: if signedIn() && request.auth.uid==aid; allow write: if false; }
   match /couples/{cid}{
     allow read: if signedIn() && (request.auth.uid in resource.data.members || resource.data.members.size()<6);
