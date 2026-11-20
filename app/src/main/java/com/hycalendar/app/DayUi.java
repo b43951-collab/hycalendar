@@ -215,7 +215,6 @@ final class DayUi {
 
     private String meta(Memos.Memo m, boolean showDate) {
         List<String> p = new ArrayList<>();
-        if (!m.label.isEmpty()) p.add("#" + m.label);
         if (!m.allDay) p.add(Alarms.clockShort(m.sMin) + "~" + Alarms.clockShort(m.eMin));
         if (m.end != null && !m.end.equals(m.start) && !m.repeats()) p.add(md(m.start) + "~" + md(m.end));
         if (m.repeats()) p.add("반복" + (m.end != null ? " ~" + md(m.end) : ""));
@@ -420,7 +419,6 @@ final class DayUi {
         final Dialog dlg = Ui.fullDialog(act, th, root);
 
         final EditText txt = field("메모 내용", m.text, 4);
-        final EditText lab = field("라벨 (선택)", m.label, 1);
 
         LinearLayout bar = new LinearLayout(act);
         bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -434,7 +432,7 @@ final class DayUi {
         bar.addView(tt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         bar.addView(Ui.btn(act, th, "저장", true, v -> {
             m.text = txt.getText().toString().trim();
-            m.label = lab.getText().toString().trim().replace("#", "");
+            m.label = "";
             if (m.text.isEmpty()) { toast("내용을 입력하세요"); return; }
             if (m.end != null && m.end.isBefore(m.start)) m.end = m.start;
             Memos.save(m);
@@ -487,11 +485,6 @@ final class DayUi {
         cr.addView(bgDot, dp2);
         c1.addView(cr);
         box.addView(c1);
-
-        // 라벨
-        LinearLayout c2 = Ui.card(act, th);
-        c2.addView(lab);
-        box.addView(c2);
 
         // 기간
         LinearLayout c3 = Ui.card(act, th);
