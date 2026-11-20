@@ -71,9 +71,6 @@ public class MainActivity extends Activity {
             ym = YearMonth.of(b.getInt("ymY", ym.getYear()), b.getInt("ymM", ym.getMonthValue()));
         }
         versionBackup();
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
-        }
         try {
             Sync.init(this, () -> runOnUiThread(() -> {
                 try { Alarms.schedule(this); } catch (Throwable ignored) { }
@@ -90,7 +87,18 @@ public class MainActivity extends Activity {
         try {
             Updater.check(this, (newer, ver, url, err) -> { if (newer && !isFinishing()) Updater.promptAndInstall(this, ver, url); });
         } catch (Throwable ignored) { }
-        if (Sync.configured() && !Sync.loggedIn() && !Store.getB("login_later", false)) SyncUi.loginDialog(this, th, true, this::refreshSettings);
+        final Runnable askLogin = () -> {
+            if (Sync.configured() && !Sync.loggedIn() && !Store.getB("login_later", false)) SyncUi.loginDialog(this, th, true, this::refreshSettings);
+        };
+        // 처음 설치했거나 빠진 권한이 있으면 먼저 권한 안내를 보여 주고, 끝나면 로그인 창을 띄운다.
+        if (Perms.needGuide(this)) Perms.show(this, th, askLogin);
+        else askLogin.run();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        Perms.refresh();
     }
 
     @Override
@@ -118,6 +126,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (cal != null) cal.invalidate();
+        Perms.refresh();
+        if (tab == 3) showTab(3);
     }
 
     // ---------- 버전 변경 시 자동 백업 (데이터는 업데이트로 바뀌지 않는다) ----------

@@ -123,19 +123,15 @@ final class AlarmUi {
         if (nx != null) top.addView(circle(Memos.cat(nx.day), 52));
         box.addView(top);
 
-        // 배터리 최적화 안내
+        // 권한 점검 안내: 알람이 제대로 울리려면 필요한 권한이 빠져 있으면 보여 준다
         try {
-            PowerManager pm = (PowerManager) act.getSystemService(android.content.Context.POWER_SERVICE);
-            if (pm != null && !pm.isIgnoringBatteryOptimizations(act.getPackageName())) {
+            if (!Perms.allOk(act)) {
                 LinearLayout bn = new LinearLayout(act);
                 bn.setGravity(Gravity.CENTER_VERTICAL);
                 bn.setPadding(dp(14), dp(10), dp(14), dp(10));
                 bn.setBackground(Ui.round(th.soft, 14));
-                bn.addView(Ui.text(act, "배터리 최적화를 끄면 알람이 더 정확하게 울려요", 13, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-                bn.addView(Ui.btn(act, th, "설정", true, v -> {
-                    try { act.startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
-                    catch (Exception e) { toast("설정을 열 수 없어요"); }
-                }));
+                bn.addView(Ui.text(act, "알람이 제대로 울리려면 권한 설정이 필요해요", 13, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                bn.addView(Ui.btn(act, th, "점검", true, v -> Perms.show(act, th, refresh)));
                 LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 bp.setMargins(0, 0, 0, dp(12));
                 box.addView(bn, bp);

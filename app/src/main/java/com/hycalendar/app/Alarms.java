@@ -252,7 +252,8 @@ public class Alarms extends BroadcastReceiver {
                             .putExtra("kind", "alarm").putExtra("nid", base + k).putExtra("base", base)
                             .putExtra("title", title(it) + " 알람")
                             .putExtra("text", it.cheer.isEmpty() ? d.getMonthValue() + "/" + d.getDayOfMonth() + "(" + dowN[d.getDayOfWeek().getValue() % 7] + ") " + shiftWord(d) + " · 출근 준비하세요" : it.cheer)
-                            .putExtra("vib", it.vib).putExtra("sound", it.sound).putExtra("auto", it.autoOff);
+                            .putExtra("vib", it.vib).putExtra("sound", it.sound).putExtra("auto", it.autoOff)
+                            .putExtra("more", times - 1 - k).putExtra("snz", it.snoozeMin).putExtra("shift", String.valueOf(Memos.cat(d)));
                     setExact(am, at, show, pi(c, base + k, ex));
                     codes.append(base + k).append(',');
                 }
@@ -298,6 +299,12 @@ public class Alarms extends BroadcastReceiver {
         }
     }
 
+    /** 이번 울림 뒤에 예약된 다시 울림을 모두 취소한다. */
+    static void cancelRest(Context c, int base) {
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        if (am != null && base >= 0) for (int k = 1; k <= 9; k++) am.cancel(pi(c, base + k, null));
+    }
+
     private static void stop(Context c, Intent i) {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
@@ -307,6 +314,14 @@ public class Alarms extends BroadcastReceiver {
     }
 
     private static void ring(Context c, Intent i) {
+        if ("alarm".equals(i.getStringExtra("kind"))) {
+            try {
+                Intent s = new Intent(c, AlarmService.class).setAction(AlarmService.ACT_RING);
+                if (i.getExtras() != null) s.putExtras(i.getExtras());
+                c.startForegroundService(s);
+                return;
+            } catch (Throwable ignored) { /* 실패하면 아래의 일반 알림으로 대신한다 */ }
+        }
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         boolean alarm = "alarm".equals(i.getStringExtra("kind"));
