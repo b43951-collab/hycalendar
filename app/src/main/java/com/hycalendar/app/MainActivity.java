@@ -84,14 +84,12 @@ public class MainActivity extends Activity {
         buildUi();
         try { Alarms.schedule(this); } catch (Throwable ignored) { }
         WidgetBase.updateAll(this);
+        try { if (Sync.loggedIn() && Store.getS("email", "").isEmpty()) Sync.signOut(); } catch (Throwable ignored) { }
         try { Sync.start(); } catch (Throwable ignored) { }
         try {
             Updater.check(this, (newer, ver, url, err) -> { if (newer && !isFinishing()) Updater.promptAndInstall(this, ver, url); });
         } catch (Throwable ignored) { }
-        if (Store.getS("nick", "").isEmpty()) {
-            if (Sync.configured()) SyncUi.loginDialog(this, th, true, this::refreshSettings);
-            else showNickDialog();
-        }
+        if (Sync.configured() && !Sync.loggedIn() && !Store.getB("login_later", false)) SyncUi.loginDialog(this, th, true, this::refreshSettings);
     }
 
     @Override
@@ -101,48 +99,6 @@ public class MainActivity extends Activity {
         o.putInt("scroll", settingsScroll != null && tab == 4 ? settingsScroll.getScrollY() : 0);
         o.putInt("ymY", ym.getYear());
         o.putInt("ymM", ym.getMonthValue());
-    }
-
-    // ---------- 첫 실행: 닉네임 지정 (서버 연동의 기준이 되는 값) ----------
-    private void showNickDialog() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(22), dp(20), dp(22), dp(16));
-        box.setBackground(Ui.round(th.card, 20));
-        box.addView(Ui.text(this, "닉네임을 정해 주세요", 20, th.fg, true));
-        TextView ex = Ui.text(this, "부부가 서로를 찾고 공유할 때 쓰는 이름이에요.\n한글 2~5글자, 나중에 설정에서 바꿀 수 있어요.", 13, th.sub, false);
-        ex.setPadding(0, dp(6), 0, dp(12));
-        box.addView(ex);
-        EditText et = new EditText(this);
-        et.setHint("예) 하이닉스남");
-        et.setHintTextColor(th.sub);
-        et.setTextColor(th.fg);
-        et.setTextSize(17);
-        et.setSingleLine(true);
-        et.setBackground(Ui.round(th.soft, 12));
-        et.setPadding(dp(14), dp(12), dp(14), dp(12));
-        box.addView(et);
-        TextView err = Ui.text(this, " ", 12, th.sun, false);
-        err.setPadding(dp(4), dp(6), 0, dp(10));
-        box.addView(err);
-        TextView ok = Ui.btn(this, th, "시작하기", true, null);
-        box.addView(ok);
-        final android.app.Dialog dlg = new android.app.Dialog(this, android.R.style.Theme_DeviceDefault_NoActionBar);
-        dlg.setContentView(box);
-        dlg.setCancelable(false);
-        dlg.setCanceledOnTouchOutside(false);
-        if (dlg.getWindow() != null) {
-            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-            dlg.getWindow().setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.9f), ViewGroup.LayoutParams.WRAP_CONTENT);
-        }
-        ok.setOnClickListener(v -> {
-            String s = et.getText().toString().trim();
-            if (!s.matches("^[가-힣]{2,5}$")) { err.setText("한글 2~5글자로 입력해 주세요 (공백·숫자·영어 불가)"); return; }
-            Store.putS("nick", s);
-            dlg.dismiss();
-            toast("닉네임을 저장했어요 (중복 확인은 서버 연동 때 함께 적용돼요)");
-        });
-        dlg.show();
     }
 
     @Override
@@ -500,35 +456,6 @@ public class MainActivity extends Activity {
             });
         }));
         box.addView(uc);
-
-        box.addView(Ui.sectionTitle(this, th, "내 정보"));
-        LinearLayout nc = Ui.card(this, th);
-        if (Sync.loggedIn()) {
-            nc.addView(Ui.text(this, "닉네임: " + Store.getS("nick", ""), 15, th.fg, true));
-            nc.addView(Ui.text(this, "로그인한 뒤에는 닉네임을 바꿀 수 없어요.", 12, th.sub, false));
-            box.addView(nc);
-        } else {
-        LinearLayout nr = new LinearLayout(this);
-        nr.setGravity(Gravity.CENTER_VERTICAL);
-        EditText nick = new EditText(this);
-        nick.setHint("닉네임 (한글 2~5자)");
-        nick.setHintTextColor(th.sub);
-        nick.setTextColor(th.fg);
-        nick.setBackground(Ui.round(th.soft, 10));
-        nick.setPadding(dp(12), dp(8), dp(12), dp(8));
-        nick.setText(Store.getS("nick", ""));
-        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        np.setMargins(0, 0, dp(8), 0);
-        nr.addView(nick, np);
-        nr.addView(Ui.btn(this, th, "변경", false, v -> {
-            String s = nick.getText().toString().trim();
-            if (!s.matches("^[가-힣]{2,5}$")) { toast("한글 2~5글자만 가능해요"); return; }
-            Store.putS("nick", s);
-            toast("저장했어요 (중복 검사는 서버 연동 후 적용돼요)");
-        }));
-        nc.addView(nr);
-        box.addView(nc);
-        }
 
         box.addView(Ui.sectionTitle(this, th, "보기"));
         LinearLayout vc = Ui.card(this, th);

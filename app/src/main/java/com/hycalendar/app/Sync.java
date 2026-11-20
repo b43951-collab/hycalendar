@@ -15,7 +15,6 @@ import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.SetOptions;
 import com.google.firebase.firestore.WriteBatch;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -66,12 +65,6 @@ final class Sync {
 
     private static void fire() { if (changed != null) { try { changed.run(); } catch (Throwable ignored) { } } }
 
-    static String emailOf(String nick) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : nick.getBytes(StandardCharsets.UTF_8)) sb.append(String.format("%02x", b));
-        return sb.append("@hycal.app").toString();
-    }
-
     private static String errText(Exception e) {
         if (e instanceof FirebaseNetworkException) return "인터넷에 연결할 수 없어요";
         String m = e == null ? "" : String.valueOf(e.getMessage());
@@ -80,30 +73,44 @@ final class Sync {
     }
 
     // ---------- 로그인 / 가입 ----------
-    static void signIn(String nick, String pw, Done cb) {
-        if (!configured()) { cb.run("서버가 아직 설정되지 않았어요"); return; }
-        final String em = emailOf(nick);
-        final FirebaseAuth auth = FirebaseAuth.getInstance();
-        auth.signInWithEmailAndPassword(em, pw)
-                .addOnSuccessListener(r -> afterAuth(nick, cb))
-                .addOnFailureListener(e -> auth.createUserWithEmailAndPassword(em, pw)
-                        .addOnSuccessListener(r2 -> afterAuth(nick, cb))
-                        .addOnFailureListener(e2 -> cb.run(e2 instanceof FirebaseAuthUserCollisionException
-                                ? "이미 사용 중인 닉네임이거나 비밀번호가 달라요" : errText(e2))));
+    private static String authErr(Exception e) {
+        if (e instanceof com.google.firebase.auth.FirebaseAuthWeakPasswordException) return "비밀번호는 6자 이상이어야 해요";
+        if (e instanceof FirebaseAuthUserCollisionException) return "이미 가입된 이메일이에요. 로그인해 주세요";
+        if (e instanceof com.google.firebase.auth.FirebaseAuthInvalidUserException) return "가입되지 않은 이메일이에요";
+        if (e instanceof com.google.firebase.auth.FirebaseAuthInvalidCredentialsException) return "이메일 또는 비밀번호가 틀렸어요";
+        return errText(e);
     }
 
-    private static void afterAuth(final String nick, final Done cb) {
+    static void signIn(String email, String pw, Done cb) {
+        if (!configured()) { cb.run("서버가 아직 설정되지 않았어요"); return; }
+        FirebaseAuth.getInstance().signInWithEmailAndPassword(email, pw)
+                .addOnSuccessListener(r -> afterAuth(email, cb))
+                .addOnFailureListener(e -> cb.run(authErr(e)));
+    }
+
+    static void signUp(String email, String pw, Done cb) {
+        if (!configured()) { cb.run("서버가 아직 설정되지 않았어요"); return; }
+        FirebaseAuth.getInstance().createUserWithEmailAndPassword(email, pw)
+                .addOnSuccessListener(r -> afterAuth(email, cb))
+                .addOnFailureListener(e -> cb.run(authErr(e)));
+    }
+
+    static void resetPassword(String email, Done cb) {
+        if (!configured()) { cb.run("서버가 아직 설정되지 않았어요"); return; }
+        FirebaseAuth.getInstance().sendPasswordResetEmail(email)
+                .addOnSuccessListener(r -> cb.run(null))
+                .addOnFailureListener(e -> cb.run(authErr(e)));
+    }
+
+    private static void afterAuth(final String email, final Done cb) {
         final String uid = uid();
+        Store.putS("email", email);
         userDoc(uid).get().addOnSuccessListener(doc -> {
             if (doc.exists()) {
-                String n = doc.getString("nick");
-                Store.putS("nick", n == null || n.isEmpty() ? nick : n);
                 String c = doc.getString("cid");
                 Store.putS("cid", c == null ? "" : c);
             } else {
-                Store.putS("nick", nick);
                 Map<String, Object> m = new HashMap<>();
-                m.put("nick", nick);
                 m.put("grp", (long) Store.getI("grp_me", 1));
                 userDoc(uid).set(m, SetOptions.merge());
             }
@@ -127,7 +134,7 @@ final class Sync {
         Store.putS("uid", "");
         Store.putS("cid", "");
         Store.putS("partner", "");
-        Store.putS("partner_nick", "");
+        Store.putS("email", "");
         Store.putS("code", "");
         Store.putS("synced_cid", "");
         Store.putS("synced_pt", "");
@@ -267,8 +274,6 @@ final class Sync {
         if (pt.isEmpty()) return;
         partnerReg = userDoc(pt).addSnapshotListener((d, e) -> {
             if (e != null || d == null || !d.exists()) return;
-            String n = d.getString("nick");
-            if (n != null) Store.putS("partner_nick", n);
             Long g = d.getLong("grp");
             if (g != null && g >= 1 && g <= 5) Store.putI("grp_mate", g.intValue());
             fire();
@@ -344,7 +349,6 @@ final class Sync {
         try {
             if (!loggedIn()) return;
             Map<String, Object> m = new HashMap<>();
-            m.put("nick", Store.getS("nick", ""));
             m.put("grp", (long) Store.getI("grp_me", 1));
             if (!cid().isEmpty()) m.put("cid", cid());
             userDoc(uid()).set(m, SetOptions.merge());

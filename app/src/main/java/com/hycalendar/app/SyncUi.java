@@ -8,6 +8,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -54,48 +55,69 @@ final class SyncUi {
         return dlg;
     }
 
-    /** 닉네임 + 비밀번호로 로그인(없으면 가입). first면 닫을 수 없다. */
-    static void loginDialog(Activity a, Theme th, boolean first, Runnable done) {
+    /** 이메일 + 비밀번호로 로그인 / 가입 */
+    static void loginDialog(Activity a, Theme th, boolean startup, Runnable done) {
         LinearLayout box = new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.addView(Ui.text(a, first ? "닉네임을 정해 주세요" : "로그인 / 가입", 20, th.fg, true));
-        TextView ex = Ui.text(a, "닉네임과 비밀번호로 가입하거나 로그인해요. 닉네임은 한글 2~5글자이고, 가입한 뒤에는 바꿀 수 없어요. 비밀번호는 6자 이상이에요.", 13, th.sub, false);
+        box.addView(Ui.text(a, "로그인 / 가입", 20, th.fg, true));
+        TextView ex = Ui.text(a, "이메일과 비밀번호(6자 이상)로 로그인해요. 처음이면 '가입'을 누르세요.", 13, th.sub, false);
         ex.setPadding(0, dp(6), 0, dp(12));
         box.addView(ex);
-        final EditText nick = field(a, th, "닉네임 (한글 2~5자)", false);
-        nick.setText(Store.getS("nick", ""));
-        box.addView(nick, gap());
+        final EditText mail = field(a, th, "이메일", false);
+        mail.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        mail.setText(Store.getS("email", ""));
+        box.addView(mail, gap());
         final EditText pw = field(a, th, "비밀번호 (6자 이상)", true);
         box.addView(pw, gap());
         final TextView err = Ui.text(a, " ", 12, th.sun, false);
         err.setPadding(dp(4), 0, 0, dp(8));
         box.addView(err);
+        final Dialog dlg = cardDialog(a, th, box, true);
         LinearLayout row = new LinearLayout(a);
-        final Dialog dlg = cardDialog(a, th, box, !first);
-        if (!first) {
-            LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-            l1.setMargins(0, 0, dp(6), 0);
-            row.addView(Ui.btn(a, th, "나중에", false, v -> dlg.dismiss()), l1);
-        }
-        final TextView ok = Ui.btn(a, th, "확인", true, null);
-        ok.setOnClickListener(v -> {
-            String n = nick.getText().toString().trim(), p = pw.getText().toString();
-            if (!n.matches("^[가-힣]{2,5}$")) { err.setText("닉네임은 한글 2~5글자로 입력해 주세요"); return; }
+        final TextView login = Ui.btn(a, th, "로그인", true, null);
+        final TextView signup = Ui.btn(a, th, "가입", false, null);
+        View.OnClickListener go = v -> {
+            boolean isLogin = v == login;
+            String m = mail.getText().toString().trim(), p = pw.getText().toString();
+            if (!m.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) { err.setText("이메일 형식을 확인해 주세요"); return; }
             if (p.length() < 6) { err.setText("비밀번호는 6자 이상이에요"); return; }
             err.setText("처리 중…");
-            ok.setEnabled(false);
-            Sync.signIn(n, p, e -> {
-                ok.setEnabled(true);
+            login.setEnabled(false); signup.setEnabled(false);
+            Sync.Done cb = e -> {
+                login.setEnabled(true); signup.setEnabled(true);
                 if (e != null) { err.setText(e); return; }
                 dlg.dismiss();
-                Toast.makeText(a, "로그인했어요", Toast.LENGTH_SHORT).show();
+                Toast.makeText(a, isLogin ? "로그인했어요" : "가입했어요", Toast.LENGTH_SHORT).show();
                 if (done != null) done.run();
-            });
-        });
+            };
+            if (isLogin) Sync.signIn(m, p, cb); else Sync.signUp(m, p, cb);
+        };
+        login.setOnClickListener(go);
+        signup.setOnClickListener(go);
+        LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        l1.setMargins(0, 0, dp(6), 0);
         LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        l2.setMargins(first ? 0 : dp(6), 0, 0, 0);
-        row.addView(ok, l2);
+        l2.setMargins(dp(6), 0, 0, 0);
+        row.addView(login, l1);
+        row.addView(signup, l2);
         box.addView(row);
+        TextView reset = Ui.text(a, "비밀번호를 잊었어요", 13, th.todayStroke, true);
+        reset.setGravity(Gravity.CENTER);
+        reset.setPadding(0, dp(14), 0, dp(6));
+        reset.setOnClickListener(v -> {
+            String m = mail.getText().toString().trim();
+            if (m.isEmpty()) { err.setText("위에 이메일을 먼저 입력해 주세요"); return; }
+            err.setText("메일을 보내는 중…");
+            Sync.resetPassword(m, e -> err.setText(e != null ? e : "재설정 메일을 보냈어요. 메일함(스팸함도)을 확인하세요"));
+        });
+        box.addView(reset);
+        if (startup) {
+            TextView later = Ui.text(a, "나중에 할게요", 13, th.sub, false);
+            later.setGravity(Gravity.CENTER);
+            later.setPadding(0, dp(6), 0, dp(4));
+            later.setOnClickListener(v -> { Store.putB("login_later", true); dlg.dismiss(); });
+            box.addView(later);
+        }
         dlg.show();
     }
 
@@ -154,7 +176,7 @@ final class SyncUi {
             c.addView(Ui.btn(a, th, "로그인 / 가입", true, v -> loginDialog(a, th, false, refresh)));
             return c;
         }
-        c.addView(Ui.text(a, "로그인: " + Store.getS("nick", ""), 15, th.fg, true));
+        c.addView(Ui.text(a, "로그인: " + Store.getS("email", ""), 15, th.fg, true));
         String cid = Sync.cid(), partner = Sync.partner();
         if (cid.isEmpty()) {
             TextView ex = Ui.text(a, "배우자와 연결해 보세요. 한 명이 코드를 만들고, 다른 한 명이 그 코드를 입력해요.", 12, th.sub, false);
@@ -187,8 +209,7 @@ final class SyncUi {
             w.setPadding(0, dp(8), 0, 0);
             c.addView(w);
         } else {
-            String pn = Store.getS("partner_nick", "");
-            c.addView(Ui.text(a, "배우자 연결됨" + (pn.isEmpty() ? "" : " · " + pn), 14, th.todayStroke, true));
+            c.addView(Ui.text(a, "배우자 연결됨", 14, th.todayStroke, true));
             TextView ex = Ui.text(a, "메모·근태·잔여가 서로 실시간으로 반영돼요.", 12, th.sub, false);
             ex.setPadding(0, dp(2), 0, 0);
             c.addView(ex);
