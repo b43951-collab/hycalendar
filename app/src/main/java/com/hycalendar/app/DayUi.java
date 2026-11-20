@@ -237,10 +237,10 @@ final class DayUi {
                     box.addView(row);
                 }
             }
-            if (sh != 'O') {
+            if (sh != 'O' && sh != 'X') {
                 LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 ml.setMargins(0, dp(14), 0, dp(4));
-                box.addView(Ui.text(act, wn + " 근태 추가 (" + sh + " 근무)", 13, th.sub, true), ml);
+                box.addView(Ui.text(act, wn + " 근태 추가 (" + (sh == 'N' ? "통상" : sh + " 근무") + ")", 13, th.sub, true), ml);
                 List<LeaveCore.Type> ok = new ArrayList<>();
                 for (LeaveCore.Type t : LeaveCore.TYPES) if (LeaveCore.allowed(t, sh)) ok.add(t);
                 for (int i = 0; i < ok.size(); i += 4) {
@@ -270,10 +270,11 @@ final class DayUi {
     }
 
     private View pill(String who, char t) {
-        String s = who + "  " + (t == 'O' ? "휴" : String.valueOf(t));
-        TextView v = Ui.text(act, s, 14, t == 'O' ? th.offText : Theme.onColor(th.shiftColor(t)), true);
+        boolean plain = t == 'O' || t == 'X' || t == 'N';
+        String s = who + "  " + (t == 'N' ? "통상근무" : (t == 'O' || t == 'X') ? "휴" : String.valueOf(t));
+        TextView v = Ui.text(act, s, 14, (t == 'O' || t == 'X') ? th.offText : t == 'N' ? th.fg : Theme.onColor(th.shiftColor(t)), true);
         v.setPadding(dp(14), dp(7), dp(14), dp(7));
-        v.setBackground(Ui.round(t == 'O' ? th.soft : th.shiftColor(t), 18));
+        v.setBackground(Ui.round(plain ? th.soft : th.shiftColor(t), 18));
         return v;
     }
 
@@ -495,16 +496,16 @@ final class DayUi {
         // 반복 (고른 조건을 모두 만족하는 날만)
         LinearLayout c4 = Ui.card(act, th);
         c4.addView(Ui.text(act, "근무에 반복", 14, th.fg, true));
-        char[] codes = {'A', 'B', 'C', 'O'};
-        boolean[] ss = new boolean[4];
-        for (int i = 0; i < 4; i++) ss[i] = m.repShift.indexOf(codes[i]) >= 0;
+        char[] codes = {'A', 'B', 'C', 'N', 'O'};
+        boolean[] ss = new boolean[5];
+        for (int i = 0; i < 5; i++) ss[i] = m.repShift.indexOf(codes[i]) >= 0;
         // 일차 칩: 근무를 고르면 아래에 나타난다 (전체, 1~6일차)
         final LinearLayout dayBox = new LinearLayout(act);
         dayBox.setOrientation(LinearLayout.VERTICAL);
         final Runnable[] buildDays = new Runnable[1];
         buildDays[0] = () -> {
             dayBox.removeAllViews();
-            if (m.repShift.isEmpty()) { m.repDay = 0; dayBox.setVisibility(View.GONE); return; }
+            if (m.repShift.isEmpty() || m.repShift.equals("N")) { m.repDay = 0; dayBox.setVisibility(View.GONE); return; }
             dayBox.setVisibility(View.VISIBLE);
             final boolean onlyRest = m.repShift.equals("O");
             final int n = onlyRest ? 2 : 6;
@@ -543,9 +544,9 @@ final class DayUi {
             dayBox.addView(Ui.text(act, "몇 일차", 13, th.sub, true));
             dayBox.addView(row, rp);
         };
-        c4.addView(Ui.chips(act, th, new String[]{"A", "B", "C", "휴"}, ss, () -> {
+        c4.addView(Ui.chips(act, th, new String[]{"A", "B", "C", "통상", "휴"}, ss, () -> {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 4; i++) if (ss[i]) sb.append(codes[i]);
+            for (int i = 0; i < 5; i++) if (ss[i]) sb.append(codes[i]);
             m.repShift = sb.toString();
             buildDays[0].run();
         }));

@@ -14,12 +14,17 @@ public final class ShiftCore {
 
     /** group: 1~4. 반환: 'A','B','C','O'(휴) */
     public static char typeFor(int group, LocalDate d) {
+        if (group == 5) { // 통상근무: 월~금(공휴일 제외) 'N', 그 외 'X'
+            int w = d.getDayOfWeek().getValue();
+            return (w <= 5 && Holidays.name(d).isEmpty()) ? 'N' : 'X';
+        }
         long diff = ChronoUnit.DAYS.between(ANCHOR, d) + (group - 1) * 6L;
         return SEQ[(int) Math.floorMod(diff, 24L)];
     }
 
     /** 그 날이 근무(또는 휴) 구간의 몇 번째 날인지: 근무 1~6, 휴 1~2 */
     public static int dayInBlock(int group, LocalDate d) {
+        if (group == 5) return 1;
         long diff = ChronoUnit.DAYS.between(ANCHOR, d) + (group - 1) * 6L;
         return (int) (Math.floorMod(diff, 24L) % 8) + 1;
     }

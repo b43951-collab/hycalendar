@@ -456,9 +456,9 @@ public class MainActivity extends Activity {
         box.addView(Ui.sectionTitle(this, th, "근무조"));
         LinearLayout g = Ui.card(this, th);
         g.addView(Ui.text(this, "나", 13, th.sub, false));
-        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); dataChanged(); }));
+        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); dataChanged(); }));
         g.addView(Ui.text(this, "배우자", 13, th.sub, false));
-        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
+        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
         g.addView(Ui.text(this, "나 줄 배경색", 13, th.sub, false));
         g.addView(Ui.swatches(this, th, Store.getI("c_me", 0), i -> { Store.putI("c_me", i); dataChanged(); }));
         g.addView(Ui.text(this, "배우자 줄 배경색", 13, th.sub, false));

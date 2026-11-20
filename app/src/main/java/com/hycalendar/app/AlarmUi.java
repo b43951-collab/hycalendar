@@ -45,6 +45,7 @@ final class AlarmUi {
         int fill; String s; int tc;
         if (t == 'O') { fill = th.soft; s = "휴"; tc = th.offText; }
         else if (t == 'L') { fill = th.orange; s = "휴가"; tc = Color.WHITE; }
+        else if (t == 'N') { fill = th.soft; s = "통상"; tc = th.fg; }
         else { fill = th.shiftColor(t); s = String.valueOf(t); tc = Theme.onColor(fill); }
         TextView v = Ui.text(act, s, sizeDp * (s.length() > 1 ? 0.3f : 0.42f), tc, true);
         v.setGravity(Gravity.CENTER);
@@ -213,13 +214,13 @@ final class AlarmUi {
         // 반복
         LinearLayout rc = Ui.card(act, th);
         rc.addView(Ui.text(act, "근무에 반복", 14, th.fg, true));
-        char[] codes = {'A', 'B', 'C', 'O', 'L'};
-        String[] names = {"A", "B", "C", "휴", "휴가"};
-        boolean[] ss = new boolean[5];
-        for (int i = 0; i < 5; i++) ss[i] = it.shifts.indexOf(codes[i]) >= 0;
+        char[] codes = {'A', 'B', 'C', 'N', 'O', 'L'};
+        String[] names = {"A", "B", "C", "통상", "휴", "휴가"};
+        boolean[] ss = new boolean[6];
+        for (int i = 0; i < 6; i++) ss[i] = it.shifts.indexOf(codes[i]) >= 0;
         rc.addView(Ui.chips(act, th, names, ss, () -> {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 5; i++) if (ss[i]) sb.append(codes[i]);
+            for (int i = 0; i < 6; i++) if (ss[i]) sb.append(codes[i]);
             it.shifts = sb.toString();
         }));
         TextView d2 = Ui.text(act, "요일에 반복", 14, th.fg, true);

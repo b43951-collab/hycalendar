@@ -131,7 +131,13 @@ final class Memos {
     /** 내 근무 분류 (알람용): A B C 휴(O) 휴가(L) */
     static char cat(LocalDate d) {
         if (LeaveCore.isOff(Store.useKeysOn(d))) return 'L';
-        return ShiftCore.typeFor(Store.getI("grp_me", 1), d);
+        return shiftOf(d);
+    }
+
+    /** 내 근무 종류: A B C N(통상) O(휴) — 통상의 쉬는 날은 O */
+    static char shiftOf(LocalDate d) {
+        char t = ShiftCore.typeFor(Store.getI("grp_me", 1), d);
+        return t == 'X' ? 'O' : t;
     }
 
     static boolean applies(Memo m, LocalDate d) {
@@ -142,7 +148,7 @@ final class Memos {
         if (d.isBefore(m.start)) return false;
         if (m.end != null && d.isAfter(m.end)) return false;
         // 고른 조건을 모두 만족해야 한다 (AND)
-        if (!m.repShift.isEmpty() && m.repShift.indexOf(ShiftCore.typeFor(Store.getI("grp_me", 1), d)) < 0) return false;
+        if (!m.repShift.isEmpty() && m.repShift.indexOf(shiftOf(d)) < 0) return false;
         if (m.repDay != 0 && !m.repShift.isEmpty() && (m.repDay & (1 << (ShiftCore.dayInBlock(Store.getI("grp_me", 1), d) - 1))) == 0) return false;
         if (m.repDow != 0 && (m.repDow & (1 << (d.getDayOfWeek().getValue() % 7))) == 0) return false;
         if (m.repDate != 0) {

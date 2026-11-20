@@ -82,7 +82,7 @@ public final class LeaveCore {
 
     /** 그 날 근무 종류(A/B/C)에서 선택 가능한 유형인가. */
     public static boolean allowed(Type t, char shift) {
-        if (shift == 'O') return false;
+        if (shift == 'O' || shift == 'X') return false;
         return t.only == null || t.only.indexOf(shift) >= 0;
     }
 

@@ -113,7 +113,7 @@ final class Renderer {
                 p.setTextAlign(Paint.Align.CENTER);
                 p.setTypeface(Typeface.DEFAULT);
                 p.setColor(th.fg);
-                String lab = o.mode == COUPLE ? (r == 0 ? "나" : "배우자") : grp + "조";
+                String lab = o.mode == COUPLE ? (r == 0 ? "나" : "배우자") : (grp == 5 ? "통상" : grp + "조");
                 p.setTextSize(Math.min(g.rowH * 0.4f, g.labelW * (lab.length() > 2 ? 0.34f : 0.46f)));
                 c.drawText(lab, g.labelW / 2, ry + g.rowH * 0.5f + p.getTextSize() * 0.35f, p);
             }
@@ -396,6 +396,8 @@ final class Renderer {
             float wd = p.measureText(offLabel);
             if (wd > pw * 0.9f) { sz = sz * pw * 0.9f / wd; p.setTextSize(sz); }
             c.drawText(offLabel, mx, cy + sz * 0.35f, p);
+        } else if (type == 'N' || type == 'X') {
+            // 통상근무: 근무표시 없음
         } else if (type == 'O') {
             p.setColor(th.offText);
             p.setTextSize(h * 0.62f);
@@ -412,7 +414,7 @@ final class Renderer {
             p.setTextSize(h * 0.58f);
             c.drawText(String.valueOf(type), mx, cy + h * 0.2f, p);
         }
-        if (ring != 0) {
+        if (ring != 0 && (leaveOff || (type != 'N' && type != 'X'))) {
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(Math.max(2f, h * 0.09f));
             p.setColor(ring);

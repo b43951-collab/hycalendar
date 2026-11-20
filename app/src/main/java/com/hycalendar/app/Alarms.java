@@ -191,7 +191,7 @@ public class Alarms extends BroadcastReceiver {
             StringBuilder sb = new StringBuilder();
             for (char ch : it.shifts.toCharArray()) {
                 if (sb.length() > 0) sb.append('·');
-                sb.append(ch == 'O' ? "휴" : ch == 'L' ? "휴가" : String.valueOf(ch));
+                sb.append(ch == 'O' ? "휴" : ch == 'L' ? "휴가" : ch == 'N' ? "통상" : String.valueOf(ch));
             }
             p.add(sb + " 근무");
         }
@@ -280,7 +280,7 @@ public class Alarms extends BroadcastReceiver {
 
     private static String shiftWord(LocalDate d) {
         char t = Memos.cat(d);
-        return t == 'O' ? "휴무" : t == 'L' ? "휴가" : t + "근무";
+        return t == 'O' ? "휴무" : t == 'L' ? "휴가" : t == 'N' ? "통상근무" : t + "근무";
     }
 
     @Override
