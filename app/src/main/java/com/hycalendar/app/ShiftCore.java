@@ -17,4 +17,10 @@ public final class ShiftCore {
         long diff = ChronoUnit.DAYS.between(ANCHOR, d) + (group - 1) * 6L;
         return SEQ[(int) Math.floorMod(diff, 24L)];
     }
+
+    /** 그 날이 근무(또는 휴) 구간의 몇 번째 날인지: 근무 1~6, 휴 1~2 */
+    public static int dayInBlock(int group, LocalDate d) {
+        long diff = ChronoUnit.DAYS.between(ANCHOR, d) + (group - 1) * 6L;
+        return (int) (Math.floorMod(diff, 24L) % 8) + 1;
+    }
 }

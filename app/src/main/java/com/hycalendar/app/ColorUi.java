@@ -28,12 +28,28 @@ final class ColorUi {
 
     interface Cb { void run(int color); }
 
-    /** 0 = 기본/없음 */
-    static final int[] BASE = {
-            0xFFFFD700, 0xFF424242, 0xFF78909C, 0xFF5584E8, 0xFF4DD8DC,
-            0xFF55B84C, 0xFFFF9F7A, 0xFFCDA5AC, 0xFFB968C4, 0xFFE65100,
-            0xFFFFF5B8, 0xFFE0E0E0, 0xFFD6E4FC, 0xFFD8F8F6, 0xFFDCEBCB,
-            0xFFE4DAD4, 0xFFF1E3F4, 0xFFFFD3C0, 0xFFFFFFFF, 0};
+    /** 진한 기본 5색 (원래 값). 0 = 기본/없음 칸은 따로 붙는다 */
+    static final int[] BASE5 = {0xFF212121, 0xFFE53935, 0xFF1E6FEB, 0xFF2E9E4F, 0xFFFF4F9A};
+
+    /** 길게 눌러 바꾼 기본색을 반영한 현재 5색 */
+    static int[] base(Activity unused) {
+        int[] r = BASE5.clone();
+        String s = Store.getS("base_ov", "");
+        if (!s.isEmpty()) {
+            String[] p = s.split(",");
+            for (int i = 0; i < p.length && i < 5; i++) { try { int v = Integer.parseInt(p[i]); if (v != 0) r[i] = v; } catch (Exception ignored) { } }
+        }
+        return r;
+    }
+
+    private static void setBase(int i, int color) {
+        String[] p = new String[5];
+        String s = Store.getS("base_ov", "");
+        String[] o = s.isEmpty() ? new String[0] : s.split(",");
+        for (int k = 0; k < 5; k++) p[k] = k < o.length ? o[k] : "0";
+        p[i] = Integer.toString(color);
+        Store.putS("base_ov", String.join(",", p));
+    }
 
     /** 색 한 개를 보여주는 동그라미. color==0이면 빗금 원(없음) 또는 기본색 */
     static final class Dot extends View {
@@ -119,11 +135,20 @@ final class ColorUi {
             t1.setGravity(Gravity.CENTER);
             t1.setPadding(0, 0, 0, Ui.dp(14));
             box.addView(t1);
-            for (int i = 0; i < BASE.length; i += 5) {
-                LinearLayout row = new LinearLayout(a);
-                for (int j = i; j < i + 5; j++) row.addView(swatch(a, th, BASE[j], sel[0], forText, () -> { }, c -> { sel[0] = c; cb.run(c); render[0].run(); }, null), cell());
-                box.addView(row);
+            final int[] bs = base(a);
+            LinearLayout brow = new LinearLayout(a);
+            for (int j = 0; j < 6; j++) {
+                final int ix = j;
+                int col = j < 5 ? bs[j] : 0;
+                brow.addView(swatch(a, th, col, sel[0], forText, () -> { }, c -> { sel[0] = c; cb.run(c); render[0].run(); },
+                        j < 5 ? () -> wheel(a, th, bs[ix], BASE5[ix], c -> {
+                            setBase(ix, c);
+                            sel[0] = c;
+                            cb.run(c);
+                            render[0].run();
+                        }) : null), cell());
             }
+            box.addView(brow);
             View ln = new View(a);
             ln.setBackgroundColor(th.line);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1);
@@ -138,7 +163,7 @@ final class ColorUi {
             for (int k = 0; k < cs.size(); k++) {
                 final int ix = k;
                 cells.add(swatch(a, th, cs.get(k), sel[0], forText, () -> { }, c -> { sel[0] = c; cb.run(c); render[0].run(); },
-                        () -> wheel(a, th, cs.get(ix), c -> {
+                        () -> wheel(a, th, cs.get(ix), 0, c -> {
                             List<Integer> l2 = customs();
                             if (ix < l2.size()) l2.set(ix, c);
                             saveCustoms(l2);
@@ -154,7 +179,7 @@ final class ColorUi {
             g.setColor(0);
             g.setStroke(Ui.dp(1.5f), th.line);
             plus.setBackground(g);
-            plus.setOnClickListener(v -> wheel(a, th, 0xFFFFE600, c -> {
+            plus.setOnClickListener(v -> wheel(a, th, 0xFFFFE600, 0, c -> {
                 List<Integer> l2 = customs();
                 l2.add(c);
                 saveCustoms(l2);
@@ -203,7 +228,8 @@ final class ColorUi {
     }
 
     // ---------- 색상환 ----------
-    static void wheel(Activity a, Theme th, int start, Cb done) {
+    /** orig != 0이면 "원래 색" 버튼으로 되돌릴 수 있다 */
+    static void wheel(Activity a, Theme th, int start, int orig, Cb done) {
         LinearLayout box = new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setBackground(Ui.round(0xFF1E1E1E, 22));
@@ -219,6 +245,12 @@ final class ColorUi {
         TextView ok = Ui.text(a, "확인", 17, 0xFF3D8BFF, true);
         ok.setPadding(Ui.dp(22), Ui.dp(10), Ui.dp(22), Ui.dp(10));
         ok.setOnClickListener(v -> { dlg.dismiss(); done.run(pv.color()); });
+        if (orig != 0) {
+            TextView reset = Ui.text(a, "원래 색", 17, 0xFF9E9E9E, true);
+            reset.setPadding(Ui.dp(22), Ui.dp(10), Ui.dp(22), Ui.dp(10));
+            reset.setOnClickListener(v -> { dlg.dismiss(); done.run(orig); });
+            bar.addView(reset);
+        }
         bar.addView(cancel);
         bar.addView(ok);
         box.addView(bar);

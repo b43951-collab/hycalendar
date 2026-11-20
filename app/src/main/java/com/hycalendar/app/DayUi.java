@@ -370,7 +370,7 @@ final class DayUi {
         } else {
             m.id = src.id; m.text = src.text; m.url = src.url; m.label = src.label; m.color = src.color; m.bg = src.bg;
             m.todo = src.todo; m.done = src.done; m.allDay = src.allDay; m.start = src.start; m.end = src.end;
-            m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.repShift = src.repShift; m.repDow = src.repDow; m.repDate = src.repDate; m.repLunar = src.repLunar;
+            m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.repShift = src.repShift; m.repDow = src.repDow; m.repDay = src.repDay; m.repDate = src.repDate; m.repLunar = src.repLunar;
         }
 
         LinearLayout root = new LinearLayout(act);
@@ -498,11 +498,59 @@ final class DayUi {
         char[] codes = {'A', 'B', 'C', 'O'};
         boolean[] ss = new boolean[4];
         for (int i = 0; i < 4; i++) ss[i] = m.repShift.indexOf(codes[i]) >= 0;
+        // 일차 칩: 근무를 고르면 아래에 나타난다 (전체, 1~6일차)
+        final LinearLayout dayBox = new LinearLayout(act);
+        dayBox.setOrientation(LinearLayout.VERTICAL);
+        final Runnable[] buildDays = new Runnable[1];
+        buildDays[0] = () -> {
+            dayBox.removeAllViews();
+            if (m.repShift.isEmpty()) { m.repDay = 0; dayBox.setVisibility(View.GONE); return; }
+            dayBox.setVisibility(View.VISIBLE);
+            final boolean onlyRest = m.repShift.equals("O");
+            final int n = onlyRest ? 2 : 6;
+            if (onlyRest) m.repDay &= 0x3;
+            final boolean[] dsel = new boolean[n + 1];
+            dsel[0] = m.repDay == 0;
+            for (int i = 0; i < n; i++) dsel[i + 1] = (m.repDay & (1 << i)) != 0;
+            String[] nm = new String[n + 1];
+            nm[0] = "전체";
+            for (int i = 1; i <= n; i++) nm[i] = i + "일차";
+            final View[] holder = new View[1];
+            Runnable sync = () -> {
+                int mk = 0;
+                for (int i = 1; i <= n; i++) if (dsel[i]) mk |= 1 << (i - 1);
+                m.repDay = mk;
+            };
+            holder[0] = Ui.chips(act, th, nm, dsel, () -> { });
+            // 전체 ↔ 개별 일차는 서로 배타: 칩 클릭 뒤 상태를 맞춰 다시 그린다
+            LinearLayout row = (LinearLayout) holder[0];
+            for (int i = 0; i < row.getChildCount(); i++) {
+                final int ix = i;
+                final View chip = row.getChildAt(i);
+                final View.OnClickListener base = null;
+                chip.setOnClickListener(v -> {
+                    if (ix == 0) { for (int k = 1; k <= n; k++) dsel[k] = false; dsel[0] = true; }
+                    else { dsel[ix] = !dsel[ix]; boolean any = false; for (int k = 1; k <= n; k++) any |= dsel[k]; dsel[0] = !any; }
+                    sync.run();
+                    for (int k = 0; k < row.getChildCount(); k++) {
+                        TextView t = (TextView) row.getChildAt(k);
+                        t.setTextColor(dsel[k] ? android.graphics.Color.WHITE : th.fg);
+                        t.setBackground(Ui.round(dsel[k] ? th.todayStroke : th.soft, 18));
+                    }
+                });
+            }
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            dayBox.addView(Ui.text(act, "몇 일차", 13, th.sub, true));
+            dayBox.addView(row, rp);
+        };
         c4.addView(Ui.chips(act, th, new String[]{"A", "B", "C", "휴"}, ss, () -> {
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 4; i++) if (ss[i]) sb.append(codes[i]);
             m.repShift = sb.toString();
+            buildDays[0].run();
         }));
+        c4.addView(dayBox);
+        buildDays[0].run();
         TextView l4 = Ui.text(act, "요일에 반복", 14, th.fg, true);
         l4.setPadding(0, dp(8), 0, 0);
         c4.addView(l4);

@@ -24,6 +24,7 @@ final class Memos {
         int notify = -1;                   // 알림 시각(하루 중 분), -1 없음
         String repShift = "";              // 근무에 반복: A B C O(휴)
         int repDow;                        // 요일에 반복: bit0=일 … bit6=토
+        int repDay;                        // 근무 N일차: bit0=1일차 … bit5=6일차, 0이면 전체
         int repDate;                       // 날짜에 반복: 0 없음, 1 매월, 2 매년
         boolean repLunar;                  // 날짜 반복을 음력 기준으로
 
@@ -102,7 +103,7 @@ final class Memos {
         o.put("c2", m.color); o.put("bg2", m.bg); o.put("td", m.todo); o.put("dn", m.done); o.put("ad", m.allDay);
         o.put("s", m.start.toString()); o.put("e", m.end == null ? "" : m.end.toString());
         o.put("sm", m.sMin); o.put("em", m.eMin); o.put("n", m.notify);
-        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdt", m.repDate); o.put("rl", m.repLunar);
+        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar);
         return o;
     }
 
@@ -121,7 +122,7 @@ final class Memos {
         String e = o.optString("e");
         m.end = e.isEmpty() ? null : LocalDate.parse(e);
         m.sMin = o.optInt("sm", 540); m.eMin = o.optInt("em", 600); m.notify = o.optInt("n", -1);
-        m.repShift = o.optString("rs").replace("L", ""); m.repDow = o.optInt("rd");
+        m.repShift = o.optString("rs").replace("L", ""); m.repDow = o.optInt("rd"); m.repDay = o.optInt("rdy");
         m.repDate = o.has("rdt") ? o.optInt("rdt") : (o.optBoolean("rm") ? 1 : 0);
         m.repLunar = o.optBoolean("rl");
         return m;
@@ -142,6 +143,7 @@ final class Memos {
         if (m.end != null && d.isAfter(m.end)) return false;
         // 고른 조건을 모두 만족해야 한다 (AND)
         if (!m.repShift.isEmpty() && m.repShift.indexOf(ShiftCore.typeFor(Store.getI("grp_me", 1), d)) < 0) return false;
+        if (m.repDay != 0 && !m.repShift.isEmpty() && (m.repDay & (1 << (ShiftCore.dayInBlock(Store.getI("grp_me", 1), d) - 1))) == 0) return false;
         if (m.repDow != 0 && (m.repDow & (1 << (d.getDayOfWeek().getValue() % 7))) == 0) return false;
         if (m.repDate != 0) {
             if (m.repLunar) {
