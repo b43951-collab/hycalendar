@@ -127,7 +127,28 @@ public class MainActivity extends Activity {
         super.onResume();
         if (cal != null) cal.invalidate();
         Perms.refresh();
+        autoBackup();
         if (tab == 3) showTab(3);
+    }
+
+    /** 자동 백업: 앱을 열 때 설정한 주기가 지났으면 서버에 올린다 (0=끔, 1=매일, 2=매주, 3=매달) */
+    private void autoBackup() {
+        try {
+            int m = Store.getI("auto_bk", 0);
+            if (m == 0 || !Sync.loggedIn()) return;
+            long gap = m == 1 ? 86400000L : m == 2 ? 7 * 86400000L : 30 * 86400000L;
+            long last = 0;
+            try { last = Long.parseLong(Store.getS("srv_bk_ms", "0")); } catch (Exception ignored) { }
+            long now = System.currentTimeMillis();
+            if (now - last < gap) return;
+            Store.putS("srv_bk_ms", String.valueOf(now));   // 중복 실행 방지, 실패하면 되돌린다
+            final long prev = last;
+            Sync.backupToServer(Store.exportJson(), e -> runOnUiThread(() -> {
+                if (e != null) { Store.putS("srv_bk_ms", String.valueOf(prev)); return; }
+                Store.putS("srv_bk", new java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.KOREA).format(new java.util.Date()));
+                if (tab == 5) showTab(5);
+            }));
+        } catch (Throwable ignored) { }
     }
 
     // ---------- 버전 변경 시 자동 백업 (데이터는 업데이트로 바뀌지 않는다) ----------
@@ -534,6 +555,7 @@ public class MainActivity extends Activity {
             Sync.backupToServer(Store.exportJson(), e -> runOnUiThread(() -> {
                 if (e != null) { toast(e); return; }
                 Store.putS("srv_bk", new java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.KOREA).format(new java.util.Date()));
+                Store.putS("srv_bk_ms", String.valueOf(System.currentTimeMillis()));
                 toast("서버에 백업했어요");
                 showTab(5);
             }));
@@ -559,6 +581,14 @@ public class MainActivity extends Activity {
             }));
         }), b2);
         bc.addView(br);
+        TextView al = Ui.text(this, "자동 백업 (앱을 열 때 주기가 지났으면 서버에 올려요)", 13, th.fg, false);
+        al.setPadding(0, dp(12), 0, dp(4));
+        bc.addView(al);
+        bc.addView(Ui.segmented(this, th, new String[]{"끔", "매일", "매주", "매달"}, Store.getI("auto_bk", 0), i -> {
+            Store.putI("auto_bk", i);
+            if (i != 0 && !Sync.loggedIn()) toast("로그인해야 자동 백업이 동작해요");
+            else if (i != 0) autoBackup();
+        }));
         TextView note = Ui.text(this, "마지막 서버 백업: " + Store.getS("srv_bk", "없음") + "\n백업은 로그인한 계정에만 저장되고 나만 볼 수 있어요. 폰을 바꾸면 같은 계정으로 로그인한 뒤 '서버에서 복원하기'를 누르세요.\n앱을 업데이트해도 메모·일정·설정은 그대로 유지되고, 버전이 바뀔 때 자동으로 내부 백업을 남깁니다.", 12, th.sub, false);
         note.setPadding(0, dp(8), 0, 0);
         bc.addView(note);
