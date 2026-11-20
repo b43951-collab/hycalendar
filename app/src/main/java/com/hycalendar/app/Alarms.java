@@ -333,7 +333,7 @@ public class Alarms extends BroadcastReceiver {
         PendingIntent open = PendingIntent.getActivity(c, 0, new Intent(c, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b = new Notification.Builder(c, chId)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle(i.getStringExtra("title") == null ? "우리 근무달력" : i.getStringExtra("title"))
+                .setContentTitle(i.getStringExtra("title") == null ? "Hy캘린더" : i.getStringExtra("title"))
                 .setContentText(i.getStringExtra("text"))
                 .setStyle(new Notification.BigTextStyle().bigText(i.getStringExtra("text")))
                 .setContentIntent(open)

@@ -27,6 +27,7 @@ final class Memos {
         int repDay;                        // 근무 N일차: bit0=1일차 … bit5=6일차, 0이면 전체
         int repDate;                       // 날짜에 반복: 0 없음, 1 매월, 2 매년
         boolean repLunar;                  // 날짜 반복을 음력 기준으로
+        boolean shared;                    // 배우자와 공유 (기본 꺼짐)
 
         boolean repeats() { return !repShift.isEmpty() || repDow != 0 || repDate != 0; }
     }
@@ -78,7 +79,7 @@ final class Memos {
 
     static synchronized void save(Memo m) {
         upsert(m);
-        Sync.pushMemo(m);
+        if (m.shared) Sync.pushMemo(m); else Sync.delMemo(m.id);
     }
 
     static synchronized void delete(String id) {
@@ -125,7 +126,7 @@ final class Memos {
         o.put("c2", m.color); o.put("bg2", m.bg); o.put("td", m.todo); o.put("dn", m.done); o.put("ad", m.allDay);
         o.put("s", m.start.toString()); o.put("e", m.end == null ? "" : m.end.toString());
         o.put("sm", m.sMin); o.put("em", m.eMin); o.put("n", m.notify);
-        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar);
+        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar); o.put("sh", m.shared);
         return o;
     }
 
@@ -147,6 +148,7 @@ final class Memos {
         m.repShift = o.optString("rs").replace("L", ""); m.repDow = o.optInt("rd"); m.repDay = o.optInt("rdy");
         m.repDate = o.has("rdt") ? o.optInt("rdt") : (o.optBoolean("rm") ? 1 : 0);
         m.repLunar = o.optBoolean("rl");
+        m.shared = o.optBoolean("sh", false);
         return m;
     }
 

@@ -281,7 +281,7 @@ final class Sync {
         final String me = uid(), pt = partner();
         if (!cid().equals(Store.getS("synced_cid", ""))) {
             Store.putS("synced_cid", cid());
-            for (Memos.Memo m : Memos.all()) pushMemo(m);
+            for (Memos.Memo m : Memos.all()) if (m.shared) pushMemo(m);
             for (Store.Use u : Store.allUses()) if (u.who == 0) pushUse(u);
             Map<String, Object> bal = new HashMap<>();
             for (Map.Entry<String, ?> en : Store.prefs().getAll().entrySet()) {
@@ -314,7 +314,7 @@ final class Sync {
 
     static void pushUse(Store.Use u) {
         try {
-            if (!active()) return;
+            if (!active() || !u.shared) return;
             String owner = ownerOf(u.who);
             if (owner.isEmpty()) return;
             Map<String, Object> d = new HashMap<>();

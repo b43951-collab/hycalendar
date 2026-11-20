@@ -85,6 +85,9 @@ public class MainActivity extends Activity {
         try { Alarms.schedule(this); } catch (Throwable ignored) { }
         WidgetBase.updateAll(this);
         try { Sync.start(); } catch (Throwable ignored) { }
+        try {
+            Updater.check(this, (newer, ver, url, err) -> { if (newer && !isFinishing()) Updater.promptAndInstall(this, ver, url); });
+        } catch (Throwable ignored) { }
         if (Store.getS("nick", "").isEmpty()) {
             if (Sync.configured()) SyncUi.loginDialog(this, th, true, this::refreshSettings);
             else showNickDialog();
@@ -484,6 +487,19 @@ public class MainActivity extends Activity {
 
         box.addView(Ui.sectionTitle(this, th, "서버·부부 연결"));
         box.addView(SyncUi.card(this, th, this::refreshSettings));
+
+        box.addView(Ui.sectionTitle(this, th, "앱 업데이트"));
+        LinearLayout uc = Ui.card(this, th);
+        uc.addView(Ui.text(this, "현재 버전 v" + Updater.currentName(this), 15, th.fg, true));
+        uc.addView(Ui.btn(this, th, "업데이트 확인", false, v -> {
+            toast("확인 중…");
+            Updater.check(this, (newer, ver, url, err) -> {
+                if (err != null) toast(err);
+                else if (newer) Updater.promptAndInstall(this, ver, url);
+                else toast("최신 버전이에요");
+            });
+        }));
+        box.addView(uc);
 
         box.addView(Ui.sectionTitle(this, th, "내 정보"));
         LinearLayout nc = Ui.card(this, th);

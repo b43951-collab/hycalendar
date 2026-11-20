@@ -241,6 +241,7 @@ final class DayUi {
                 LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 ml.setMargins(0, dp(14), 0, dp(4));
                 box.addView(Ui.text(act, wn + " 근태 추가 (" + (sh == 'N' ? "통상" : sh + " 근무") + ")", 13, th.sub, true), ml);
+                if (wf == 0) box.addView(shareBox(leaveShare, on -> leaveShare = on));
                 List<LeaveCore.Type> ok = new ArrayList<>();
                 for (LeaveCore.Type t : LeaveCore.TYPES) if (LeaveCore.allowed(t, sh)) ok.add(t);
                 for (int i = 0; i < ok.size(); i += 4) {
@@ -252,7 +253,7 @@ final class DayUi {
                         final LeaveCore.Type t = ok.get(j);
                         TextView bt = Ui.btn(act, th, t.label, false, v -> {
                             for (String k : Store.useKeysOn(day, wf)) if (k.equals(t.key)) { toast("이미 등록돼 있어요"); return; }
-                            double nb = Store.addUse(day, t, wf);
+                            double nb = Store.addUse(day, t, wf, wf != 0 || leaveShare);
                             if (Double.isNaN(nb)) {
                                 if (t.pool != null) toast(LeaveCore.START + "년 이전 기간은 차감 없이 기록만 해요");
                             } else if (nb < 0) toast("잔여가 부족해요 (" + nb + ")");
@@ -267,6 +268,19 @@ final class DayUi {
                 }
             }
         }
+    }
+
+    private boolean leaveShare = true;
+
+    private View shareBox(boolean cur, Ui.BoolCb cb) {
+        android.widget.CheckBox cbx = new android.widget.CheckBox(act);
+        cbx.setText("공유");
+        cbx.setTextSize(14);
+        cbx.setTextColor(th.sub);
+        cbx.setChecked(cur);
+        cbx.setButtonTintList(android.content.res.ColorStateList.valueOf(th.todayStroke));
+        cbx.setOnCheckedChangeListener((b, on) -> cb.run(on));
+        return cbx;
     }
 
     private View pill(String who, char t) {
@@ -369,7 +383,7 @@ final class DayUi {
         if (isNew) {
             m.start = defDate;
         } else {
-            m.id = src.id; m.text = src.text; m.url = src.url; m.label = src.label; m.color = src.color; m.bg = src.bg;
+            m.id = src.id; m.text = src.text; m.url = src.url; m.label = src.label; m.color = src.color; m.bg = src.bg; m.shared = src.shared;
             m.todo = src.todo; m.done = src.done; m.allDay = src.allDay; m.start = src.start; m.end = src.end;
             m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.repShift = src.repShift; m.repDow = src.repDow; m.repDay = src.repDay; m.repDate = src.repDate; m.repLunar = src.repLunar;
         }
@@ -419,7 +433,10 @@ final class DayUi {
         LinearLayout cr = new LinearLayout(act);
         cr.setGravity(Gravity.CENTER_VERTICAL);
         cr.setPadding(0, dp(12), 0, dp(4));
-        cr.addView(Ui.text(act, "색", 16, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        cr.addView(shareBox(m.shared, on -> m.shared = on));
+        TextView colLbl = Ui.text(act, "색", 16, th.fg, false);
+        colLbl.setPadding(dp(14), 0, 0, 0);
+        cr.addView(colLbl, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         TextView ta = Ui.text(act, "글자", 14, th.sub, true);
         ta.setPaintFlags(ta.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
         cr.addView(ta);

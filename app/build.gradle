@@ -10,8 +10,8 @@ android {
         applicationId 'com.hycalendar.app'
         minSdk 26
         targetSdk 34
-        versionCode 10
-        versionName '0.6.0'
+        versionCode 11
+        versionName '0.7.0'
     }
 
     signingConfigs {
@@ -41,6 +41,7 @@ if (file('google-services.json').exists()) {
 
 dependencies {
     implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation 'androidx.core:core:1.13.1'
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-firestore'
 }

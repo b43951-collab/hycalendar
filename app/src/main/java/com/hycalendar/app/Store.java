@@ -16,7 +16,7 @@ final class Store {
     private Store() {}
 
     static final class Use {
-        String id, key; LocalDate date; int who; // who: 0 나, 1 배우자
+        String id, key; LocalDate date; int who; boolean shared = true; // who: 0 나, 1 배우자
     }
 
     private static SharedPreferences sp;
@@ -46,7 +46,7 @@ final class Store {
             for (int i = 0; i < a.length(); i++) {
                 JSONObject o = a.getJSONObject(i);
                 Use u = new Use();
-                u.id = o.getString("id"); u.key = o.getString("k"); u.date = LocalDate.parse(o.getString("d")); u.who = o.optInt("w", 0);
+                u.id = o.getString("id"); u.key = o.getString("k"); u.date = LocalDate.parse(o.getString("d")); u.who = o.optInt("w", 0); u.shared = o.optBoolean("sh", true);
                 l.add(u);
             }
         } catch (Exception ignored) { }
@@ -59,7 +59,7 @@ final class Store {
         try {
             for (Use u : usesCache) {
                 JSONObject o = new JSONObject();
-                o.put("id", u.id); o.put("k", u.key); o.put("d", u.date.toString()); o.put("w", u.who);
+                o.put("id", u.id); o.put("k", u.key); o.put("d", u.date.toString()); o.put("w", u.who); o.put("sh", u.shared);
                 a.put(o);
             }
         } catch (Exception ignored) { }
@@ -111,8 +111,11 @@ final class Store {
     }
 
     /** 반환: 차감 후 잔여(차감 안 하면 NaN) */
-    static synchronized double addUse(LocalDate d, LeaveCore.Type t, int who) {
+    static synchronized double addUse(LocalDate d, LeaveCore.Type t, int who) { return addUse(d, t, who, true); }
+
+    static synchronized double addUse(LocalDate d, LeaveCore.Type t, int who, boolean shared) {
         Use u = new Use();
+        u.shared = shared;
         u.who = who;
         u.id = Long.toString(System.currentTimeMillis(), 36) + Integer.toString((int) (Math.random() * 1000), 36);
         u.key = t.key; u.date = d;
