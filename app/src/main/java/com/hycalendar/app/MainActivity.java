@@ -73,10 +73,22 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
         }
+        try {
+            Sync.init(this, () -> runOnUiThread(() -> {
+                try { Alarms.schedule(this); } catch (Throwable ignored) { }
+                WidgetBase.updateAll(this);
+                if (cal != null) cal.invalidate();
+                if (tab == 2 || tab == 3) showTab(tab);
+            }));
+        } catch (Throwable ignored) { }
         buildUi();
         try { Alarms.schedule(this); } catch (Throwable ignored) { }
         WidgetBase.updateAll(this);
-        if (Store.getS("nick", "").isEmpty()) showNickDialog();
+        try { Sync.start(); } catch (Throwable ignored) { }
+        if (Store.getS("nick", "").isEmpty()) {
+            if (Sync.configured()) SyncUi.loginDialog(this, th, true, this::refreshSettings);
+            else showNickDialog();
+        }
     }
 
     @Override
@@ -289,6 +301,11 @@ public class MainActivity extends Activity {
         if (cal != null) cal.invalidate();
     }
 
+    private void refreshSettings() {
+        if (settingsScroll != null && tab == 4) pendingScroll = settingsScroll.getScrollY();
+        showTab(tab);
+    }
+
     private void dataChanged() {
         Alarms.schedule(this);
         WidgetBase.updateAll(this);
@@ -456,7 +473,7 @@ public class MainActivity extends Activity {
         box.addView(Ui.sectionTitle(this, th, "근무조"));
         LinearLayout g = Ui.card(this, th);
         g.addView(Ui.text(this, "나", 13, th.sub, false));
-        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); dataChanged(); }));
+        g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); Sync.pushProfile(); dataChanged(); }));
         g.addView(Ui.text(this, "배우자", 13, th.sub, false));
         g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조", "통상"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
         g.addView(Ui.text(this, "나 줄 배경색", 13, th.sub, false));
@@ -465,8 +482,16 @@ public class MainActivity extends Activity {
         g.addView(Ui.swatches(this, th, Store.getI("c_mate", 1), i -> { Store.putI("c_mate", i); dataChanged(); }));
         box.addView(g);
 
+        box.addView(Ui.sectionTitle(this, th, "서버·부부 연결"));
+        box.addView(SyncUi.card(this, th, this::refreshSettings));
+
         box.addView(Ui.sectionTitle(this, th, "내 정보"));
         LinearLayout nc = Ui.card(this, th);
+        if (Sync.loggedIn()) {
+            nc.addView(Ui.text(this, "닉네임: " + Store.getS("nick", ""), 15, th.fg, true));
+            nc.addView(Ui.text(this, "로그인한 뒤에는 닉네임을 바꿀 수 없어요.", 12, th.sub, false));
+            box.addView(nc);
+        } else {
         LinearLayout nr = new LinearLayout(this);
         nr.setGravity(Gravity.CENTER_VERTICAL);
         EditText nick = new EditText(this);
@@ -487,6 +512,7 @@ public class MainActivity extends Activity {
         }));
         nc.addView(nr);
         box.addView(nc);
+        }
 
         box.addView(Ui.sectionTitle(this, th, "보기"));
         LinearLayout vc = Ui.card(this, th);

@@ -86,7 +86,29 @@ final class Store {
 
     private static String balKey(String pool, int y, int who) { return (who == 0 ? "bal_" : "mbal_") + pool + "_" + y; }
     static double bal(String pool, int y, int who) { return sp.getFloat(balKey(pool, y, who), 0f); }
-    static void setBal(String pool, int y, int who, double v) { sp.edit().putFloat(balKey(pool, y, who), (float) v).apply(); }
+    static void setBal(String pool, int y, int who, double v) {
+        sp.edit().putFloat(balKey(pool, y, who), (float) v).apply();
+        Sync.pushBal(pool, y, who, v);
+    }
+
+    // ---- 서버 동기화용 (서버로 다시 올리지 않는다, 잔여는 건드리지 않는다) ----
+    static void putBalLocal(String key, float v) { sp.edit().putFloat(key, v).apply(); }
+
+    static synchronized void applyRemoteUse(String id, String key, LocalDate date, int who) {
+        Use hit = null;
+        for (Use x : loadUses()) if (x.id.equals(id)) hit = x;
+        if (hit == null) { hit = new Use(); hit.id = id; loadUses().add(hit); }
+        hit.key = key; hit.date = date; hit.who = who;
+        saveUses();
+    }
+
+    static synchronized void removeRemoteUse(String id) {
+        Use hit = null;
+        for (Use x : loadUses()) if (x.id.equals(id)) hit = x;
+        if (hit == null) return;
+        loadUses().remove(hit);
+        saveUses();
+    }
 
     /** 반환: 차감 후 잔여(차감 안 하면 NaN) */
     static synchronized double addUse(LocalDate d, LeaveCore.Type t, int who) {
@@ -96,6 +118,7 @@ final class Store {
         u.key = t.key; u.date = d;
         loadUses().add(u);
         saveUses();
+        Sync.pushUse(u);
         if (t.pool != null) {
             int py = LeaveCore.pyear(t.pool, d);
             if (py >= LeaveCore.START) {
@@ -113,6 +136,7 @@ final class Store {
         if (hit == null) return;
         loadUses().remove(hit);
         saveUses();
+        Sync.delUse(id);
         LeaveCore.Type t = LeaveCore.type(hit.key);
         if (t != null && t.pool != null) {
             int py = LeaveCore.pyear(t.pool, hit.date);

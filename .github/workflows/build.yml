@@ -23,6 +23,12 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Firebase 설정 파일 (있을 때만)
+        env:
+          GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GSJ" ]; then printf '%s' "$GSJ" > app/google-services.json; fi
+
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 

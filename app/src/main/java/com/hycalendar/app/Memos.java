@@ -77,6 +77,16 @@ final class Memos {
     private static String newId() { return Long.toString(System.currentTimeMillis(), 36) + Integer.toString((int) (Math.random() * 100000), 36); }
 
     static synchronized void save(Memo m) {
+        upsert(m);
+        Sync.pushMemo(m);
+    }
+
+    static synchronized void delete(String id) {
+        removeLocal(id);
+        Sync.delMemo(id);
+    }
+
+    private static void upsert(Memo m) {
         if (cache == null) load();
         if (m.id.isEmpty()) m.id = newId();
         boolean found = false;
@@ -85,11 +95,23 @@ final class Memos {
         persist();
     }
 
-    static synchronized void delete(String id) {
+    private static void removeLocal(String id) {
         if (cache == null) load();
         for (int i = 0; i < cache.size(); i++) if (cache.get(i).id.equals(id)) { cache.remove(i); break; }
         persist();
     }
+
+    // ---- 서버 동기화용 (서버로 다시 올리지 않는다) ----
+    static String toJsonString(Memo m) {
+        try { return toJson(m).toString(); } catch (Exception e) { return "{}"; }
+    }
+
+    static synchronized void applyRemote(String json) {
+        if (json == null) return;
+        try { upsert(fromJson(new JSONObject(json))); } catch (Exception ignored) { }
+    }
+
+    static synchronized void removeRemote(String id) { removeLocal(id); }
 
     private static void persist() {
         JSONArray a = new JSONArray();
