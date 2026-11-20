@@ -203,13 +203,14 @@ final class Memos {
     static List<Memo> forDate(LocalDate d) {
         List<Memo> r = new ArrayList<>();
         for (Memo m : all()) if (applies(m, d)) r.add(m);
+        Collections.sort(r, (a, b) -> Boolean.compare(b.repeats(), a.repeats()));  // 반복 메모가 항상 맨 위 (나머지 순서는 유지)
         return r;
     }
 
-    /** 전체보기용: 시작일 순 */
+    /** 전체보기용: 반복 메모 먼저, 그 안에서 시작일 순 */
     static List<Memo> sorted() {
         List<Memo> l = all();
-        Collections.sort(l, (a, b) -> a.start.compareTo(b.start));
+        Collections.sort(l, (a, b) -> a.repeats() != b.repeats() ? Boolean.compare(b.repeats(), a.repeats()) : a.start.compareTo(b.start));
         return l;
     }
 }
