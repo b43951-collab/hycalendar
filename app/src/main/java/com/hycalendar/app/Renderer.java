@@ -347,7 +347,7 @@ final class Renderer {
         List<Line> items = new ArrayList<>();
         for (Store.Use u : uses) {
             LeaveCore.Type t = LeaveCore.type(u.key);
-            if (t != null && !(t.off && t.pool != null && off)) items.add(new Line(t.label, th.orange));
+            if (t != null && !t.off) items.add(new Line(t.label, th.orange));  // 하루 휴무 종류는 근무 자리 표시만, 메모줄엔 안 나옴
         }
         for (Memos.Memo mm : Memos.forDate(date)) {
             int col = mm.color != 0 ? mm.color : th.fg;
