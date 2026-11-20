@@ -231,7 +231,7 @@ final class SyncUi {
         c.addView(Ui.text(a, "로그인: " + Store.getS("email", ""), 15, th.fg, true));
         String cid = Sync.cid(), partner = Sync.partner();
         if (cid.isEmpty()) {
-            TextView ex = Ui.text(a, "배우자·가족과 연결해 보세요. 한 명이 코드를 만들고, 다른 사람이 그 코드를 입력해요. 연결할 때 배우자(사내 부부)인지 가족인지 골라요.", 12, th.sub, false);
+            TextView ex = Ui.text(a, "배우자·가족과 연결해 보세요. 한 명이 코드를 만들고, 다른 사람이 그 코드를 입력해요. 코드를 입력하는 사람이 배우자(사내 부부)인지 가족인지 골라요.", 12, th.sub, false);
             ex.setPadding(0, dp(2), 0, dp(10));
             c.addView(ex);
             LinearLayout row = new LinearLayout(a);
@@ -239,29 +239,36 @@ final class SyncUi {
             l1.setMargins(0, 0, dp(6), 0);
             LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
             l2.setMargins(dp(6), 0, 0, 0);
-            row.addView(Ui.btn(a, th, "초대 코드 만들기", true, v -> createDialog(a, th, refresh)), l1);
+            row.addView(Ui.btn(a, th, "초대 코드 만들기", true, v -> Sync.createCouple(false, e -> {
+                if (e != null) Toast.makeText(a, e, Toast.LENGTH_LONG).show();
+                refresh.run();
+            })), l1);
             row.addView(Ui.btn(a, th, "코드 입력", false, v -> codeDialog(a, th, refresh)), l2);
             c.addView(row);
         } else {
             int n = Store.getI("mcount", 1), sc = Store.getI("scount", 0);
             boolean mine = Store.getB("is_spouse", false);
             int fam = Math.max(0, n - sc);
-            String st;
-            if (mine) st = !partner.isEmpty() ? "배우자 연결됨" + (fam > 0 ? " · 가족 " + fam + "명" : "")
-                    : (fam > 0 ? "가족 " + fam + "명 연결됨 · 배우자를 기다리는 중이에요" : "배우자를 기다리는 중이에요");
-            else st = "가족으로 연결됨 · 전체 " + n + "명";
-            c.addView(Ui.text(a, st, 14, th.todayStroke, true));
-            LinearLayout rl = new LinearLayout(a);
-            rl.setGravity(Gravity.CENTER_VERTICAL);
-            rl.setPadding(0, dp(6), 0, dp(2));
-            rl.addView(Ui.text(a, "내 연결 방식: " + (mine ? "배우자(사내 부부)" : "가족"), 13, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            rl.addView(Ui.btn(a, th, "바꾸기", false, v -> Sync.setRole(!mine, e -> {
-                if (e != null) Toast.makeText(a, e, Toast.LENGTH_LONG).show();
-                else Toast.makeText(a, !mine ? "배우자로 바꿨어요" : "가족으로 바꿨어요", Toast.LENGTH_SHORT).show();
-                refresh.run();
-            })));
-            c.addView(rl);
-            TextView ex = Ui.text(a, "초대 코드 (연결할 때 배우자 또는 가족을 골라요. 최대 " + Sync.MAX_MEMBERS + "명)", 12, th.sub, false);
+            if (n <= 1) {
+                c.addView(Ui.text(a, "아직 연결된 사람이 없어요. 아래 초대 코드를 보내 보세요.", 14, th.todayStroke, true));
+            } else {
+                String st;
+                if (mine) st = !partner.isEmpty() ? "배우자 연결됨" + (fam > 0 ? " · 가족 " + fam + "명" : "")
+                        : "가족 " + fam + "명 연결됨";
+                else st = "가족으로 연결됨 · 전체 " + n + "명";
+                c.addView(Ui.text(a, st, 14, th.todayStroke, true));
+                LinearLayout rl = new LinearLayout(a);
+                rl.setGravity(Gravity.CENTER_VERTICAL);
+                rl.setPadding(0, dp(6), 0, dp(2));
+                rl.addView(Ui.text(a, "내 연결 방식: " + (mine ? "배우자(사내 부부)" : "가족"), 13, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                rl.addView(Ui.btn(a, th, "바꾸기", false, v -> Sync.setRole(!mine, e -> {
+                    if (e != null) Toast.makeText(a, e, Toast.LENGTH_LONG).show();
+                    else Toast.makeText(a, !mine ? "배우자로 바꿨어요" : "가족으로 바꿨어요", Toast.LENGTH_SHORT).show();
+                    refresh.run();
+                })));
+                c.addView(rl);
+            }
+            TextView ex = Ui.text(a, "초대 코드 (입력하는 사람이 배우자 또는 가족을 골라요. 최대 " + Sync.MAX_MEMBERS + "명)", 12, th.sub, false);
             ex.setPadding(0, dp(8), 0, dp(4));
             c.addView(ex);
             TextView code = Ui.text(a, Store.getS("code", ""), 28, th.todayStroke, true);

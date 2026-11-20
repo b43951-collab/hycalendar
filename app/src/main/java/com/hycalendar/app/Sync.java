@@ -191,6 +191,7 @@ final class Sync {
                 List<String> sp = spousesOf(cd.get("spouses"), mem);
                 if (spouse && !sp.contains(uid)) {
                     if (sp.size() >= 2) { cb.run("이미 배우자 2명이 연결돼 있어요. 가족으로 연결해 주세요"); return; }
+                    if (sp.isEmpty() && !mem.isEmpty() && !mem.get(0).equals(uid)) sp.add(mem.get(0));  // 코드를 만든 사람도 함께 부부로
                     sp.add(uid);
                 } else if (!spouse) sp.remove(uid);
                 WriteBatch b = db().batch();

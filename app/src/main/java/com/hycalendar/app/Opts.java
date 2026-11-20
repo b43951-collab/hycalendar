@@ -50,7 +50,7 @@ final class Opts {
         }
         o.theme = Theme.get(tn, systemDark(c));
         o.meTint = Theme.tint(o.theme, Store.getI("c_me", 0));
-        o.mateTint = Theme.tint(o.theme, Store.getI("c_mate", 1));
+        o.mateTint = Sync.partner().isEmpty() ? 0 : Theme.tint(o.theme, Store.getI("c_mate", 1));
         return o;
     }
 }
