@@ -36,6 +36,7 @@ public final class LeaveCore {
             new Type("chk", "검진", "검", null, 0, true, null),
             new Type("edu", "교육", "교", null, 0, true, null),
             new Type("lt", "장기근속", "장", null, 0, true, null),
+            new Type("cc", "경조휴가", "경", null, 0, true, null),
             new Type("etc", "기타휴가", "기", null, 0, true, null),
     };
 
