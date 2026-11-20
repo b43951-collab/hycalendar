@@ -189,6 +189,8 @@ final class DayUi {
         String meta = meta(m, showDate);
         if (!meta.isEmpty()) col.addView(Ui.text(act, meta, 11, th.sub, false), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (m.shared) row.addView(shareBadge("배"));
+        if (m.family) row.addView(shareBadge("가"));
         if (onDelete != null) {
             TextView del = Ui.text(act, "삭제", 13, th.sun, true);
             del.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -198,6 +200,17 @@ final class DayUi {
         }
         row.setOnClickListener(v -> openEditor(m, m.start));
         return row;
+    }
+
+    /** 공유 표시: 배(배우자와 공유), 가(가족 전체와 공유) */
+    private View shareBadge(String s) {
+        TextView b = Ui.text(act, s, 12, th.todayStroke, true);
+        b.setGravity(Gravity.CENTER);
+        b.setBackground(Ui.round(th.card, 20));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(26), dp(26));
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        b.setLayoutParams(lp);
+        return b;
     }
 
     private String meta(Memos.Memo m, boolean showDate) {
