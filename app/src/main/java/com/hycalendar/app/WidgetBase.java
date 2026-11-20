@@ -138,7 +138,8 @@ public abstract class WidgetBase extends AppWidgetProvider {
         rv.setOnClickPendingIntent(R.id.gear, PendingIntent.getActivity(c, id + 5000, cfg, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         rv.setOnClickPendingIntent(R.id.refresh, nav(c, m, id, 0));
 
-        Intent open = new Intent(c, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent open = new Intent(c, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        open.putExtra("open_y", ym.getYear()).putExtra("open_m", ym.getMonthValue());  // 위젯에 보이던 달로 열기
         PendingIntent po = PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         rv.setOnClickPendingIntent(R.id.img, po);
         rv.setOnClickPendingIntent(R.id.title, nav(c, m, id, 0));

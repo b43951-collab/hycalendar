@@ -59,6 +59,23 @@ public class MainActivity extends Activity {
 
     private int dp(int v) { return (int) (v * dp + 0.5f); }
 
+    /** 위젯을 눌러 들어오면 위젯에 보이던 달의 달력 화면으로 연다. */
+    private boolean applyWidgetOpen(Intent it) {
+        if (it == null || !it.hasExtra("open_y")) return false;
+        try { ym = YearMonth.of(it.getIntExtra("open_y", ym.getYear()), it.getIntExtra("open_m", ym.getMonthValue())); } catch (Exception ignored) { return false; }
+        tab = 0;
+        it.removeExtra("open_y");
+        it.removeExtra("open_m");
+        return true;
+    }
+
+    @Override
+    protected void onNewIntent(Intent it) {
+        super.onNewIntent(it);
+        setIntent(it);
+        if (applyWidgetOpen(it)) showTab(0);
+    }
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -70,6 +87,7 @@ public class MainActivity extends Activity {
             pendingScroll = b.getInt("scroll", 0);
             ym = YearMonth.of(b.getInt("ymY", ym.getYear()), b.getInt("ymM", ym.getMonthValue()));
         }
+        else applyWidgetOpen(getIntent());
         versionBackup();
         try {
             Sync.init(this, () -> runOnUiThread(() -> {
