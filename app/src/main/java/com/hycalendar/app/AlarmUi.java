@@ -249,10 +249,10 @@ final class AlarmUi {
         for (int i = 0; i < autos.length; i++) if (autos[i] == it.autoOff) ai = i;
         cc.addView(Ui.segmented(act, th, new String[]{"안 함", "1분", "3분", "5분", "10분"}, ai, i -> it.autoOff = autos[i]));
         cc.addView(Ui.text(act, "다시 울림 간격", 14, th.fg, true));
-        int[] sns = {0, 5, 10, 15};
+        int[] sns = {0, 3, 5, 10, 15};
         int si = 0;
         for (int i = 0; i < sns.length; i++) if (sns[i] == it.snoozeMin) si = i;
-        cc.addView(Ui.segmented(act, th, new String[]{"안 함", "5분", "10분", "15분"}, si, i -> it.snoozeMin = sns[i]));
+        cc.addView(Ui.segmented(act, th, new String[]{"안 함", "3분", "5분", "10분", "15분"}, si, i -> it.snoozeMin = sns[i]));
         cc.addView(Ui.text(act, "다시 울림 횟수", 14, th.fg, true));
         int[] cnts = {1, 2, 3, 5};
         int ci = 0;

@@ -337,7 +337,7 @@ public class Alarms extends BroadcastReceiver {
                 .setContentText(i.getStringExtra("text"))
                 .setStyle(new Notification.BigTextStyle().bigText(i.getStringExtra("text")))
                 .setContentIntent(open)
-                .setAutoCancel(true);
+                .setAutoCancel(!alarm);  // 알람은 터치해도 꺼지지 않고, '끄기' 버튼을 눌러야만 꺼진다
         int auto = i.getIntExtra("auto", 0);
         if (alarm) {
             if (auto > 0) b.setTimeoutAfter(auto * 60000L);
@@ -346,6 +346,7 @@ public class Alarms extends BroadcastReceiver {
             b.addAction(new Notification.Action.Builder(0, "끄기",
                     PendingIntent.getBroadcast(c, 800000 + (nid % 100000), st, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)).build());
             b.setCategory(Notification.CATEGORY_ALARM);
+            b.setOngoing(true);  // 옆으로 밀어서 실수로 지워지는 것을 막는다
         }
         nm.notify(nid, b.build());
     }
