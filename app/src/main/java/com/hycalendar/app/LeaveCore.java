@@ -8,7 +8,7 @@ public final class LeaveCore {
     private LeaveCore() {}
 
     /** 이 연도부터 잔여 차감. 이전 기간은 기록만 한다. */
-    public static final int START = 2027;
+    public static final int START = 2026;
 
     public static final class Type {
         public final String key, label, shortLabel, pool, only;
