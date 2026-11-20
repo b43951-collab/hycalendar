@@ -1,11 +1,11 @@
 package com.hycalendar.app;
 
 import android.app.Dialog;
-import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.InputType;
@@ -14,6 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.NumberPicker;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -38,7 +39,51 @@ final class AlarmUi {
 
     static String clock(int min) {
         int h = min / 60, m = min % 60;
+        if (!Store.getB("alarm12h", true)) return String.format("%02d:%02d", h, m);
         return (h < 12 ? "오전 " : "오후 ") + (h % 12 == 0 ? 12 : h % 12) + ":" + String.format("%02d", m);
+    }
+
+    private NumberPicker wheel(int lo, int hi, int cur, String[] labels, boolean pad) {
+        NumberPicker np = new NumberPicker(act);
+        np.setMinValue(lo);
+        np.setMaxValue(hi);
+        if (labels != null) np.setDisplayedValues(labels);
+        else if (pad) np.setFormatter(v -> String.format("%02d", v));
+        np.setValue(cur);
+        np.setWrapSelectorWheel(labels == null);
+        np.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        if (Build.VERSION.SDK_INT >= 29) { np.setTextColor(th.fg); np.setTextSize(Ui.dp(26)); }
+        return np;
+    }
+
+    /** 알람 시간: 오전/오후·시·분을 위아래로 돌려 고르는 휠 + 12시간제 스위치 */
+    private void fillTime(final LinearLayout tc, final Alarms.Item it) {
+        tc.removeAllViews();
+        final boolean h12 = Store.getB("alarm12h", true);
+        final int h0 = it.min / 60, m0 = it.min % 60;
+        LinearLayout row = new LinearLayout(act);
+        row.setGravity(Gravity.CENTER);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        final NumberPicker ap = h12 ? wheel(0, 1, h0 >= 12 ? 1 : 0, new String[]{"오전", "오후"}, false) : null;
+        final NumberPicker hp = h12 ? wheel(1, 12, h0 % 12 == 0 ? 12 : h0 % 12, null, false) : wheel(0, 23, h0, null, true);
+        final NumberPicker mp = wheel(0, 59, m0, null, true);
+        final Runnable apply = () -> {
+            int h = hp.getValue();
+            if (h12) h = (h % 12) + (ap.getValue() == 1 ? 12 : 0);
+            it.min = h * 60 + mp.getValue();
+        };
+        NumberPicker.OnValueChangeListener l = (pk, o, n) -> apply.run();
+        if (h12) { ap.setOnValueChangedListener(l); row.addView(ap, new LinearLayout.LayoutParams(dp(84), ViewGroup.LayoutParams.WRAP_CONTENT)); }
+        hp.setOnValueChangedListener(l);
+        mp.setOnValueChangedListener(l);
+        row.addView(hp, new LinearLayout.LayoutParams(dp(76), ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.addView(Ui.text(act, ":", 26, th.fg, true));
+        row.addView(mp, new LinearLayout.LayoutParams(dp(76), ViewGroup.LayoutParams.WRAP_CONTENT));
+        tc.addView(row);
+        tc.addView(Ui.toggle(act, th, "12시간제", h12, on -> {
+            Store.putB("alarm12h", on);
+            tc.post(() -> fillTime(tc, it));
+        }));
     }
 
     private TextView circle(char t, int sizeDp) {
@@ -202,13 +247,7 @@ final class AlarmUi {
 
         // 시간
         LinearLayout tc = Ui.card(act, th);
-        TextView tm = Ui.text(act, clock(it.min), 40, th.fg, true);
-        tm.setGravity(Gravity.CENTER);
-        tm.setOnClickListener(v -> new TimePickerDialog(act, (view, h, mi) -> { it.min = h * 60 + mi; tm.setText(clock(it.min)); }, it.min / 60, it.min % 60, false).show());
-        tc.addView(tm);
-        TextView hint = Ui.text(act, "시간을 누르면 바꿀 수 있어요", 11, th.sub, false);
-        hint.setGravity(Gravity.CENTER);
-        tc.addView(hint);
+        fillTime(tc, it);
         box.addView(tc);
 
         // 반복
