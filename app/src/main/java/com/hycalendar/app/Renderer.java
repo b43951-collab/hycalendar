@@ -349,8 +349,11 @@ final class Renderer {
             LeaveCore.Type t = LeaveCore.type(u.key);
             if (t != null && !(t.off && t.pool != null && off)) items.add(new Line(t.label, th.orange));
         }
-        String memo = Store.memo(date);
-        if (!memo.isEmpty()) for (String s : memo.split("\n")) if (!s.trim().isEmpty()) items.add(new Line(s.trim(), th.fg));
+        for (Memos.Memo mm : Memos.forDate(date)) {
+            int col = mm.color >= 0 && mm.color < Theme.PALETTE.length && Theme.PALETTE[mm.color] != 0 ? Theme.PALETTE[mm.color] : th.fg;
+            if (mm.todo && mm.done) col = th.sub;
+            for (String s : mm.text.split("\n")) if (!s.trim().isEmpty()) items.add(new Line(s.trim(), col));
+        }
 
         p.setTypeface(Typeface.DEFAULT);
         p.setTextSize(memoSz);

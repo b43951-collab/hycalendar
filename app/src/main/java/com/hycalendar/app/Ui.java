@@ -103,19 +103,105 @@ final class Ui {
         return row;
     }
 
+    /** 크고 선명한 스위치 */
+    static final class Sw extends View {
+        boolean on;
+        private final BoolCb cb;
+        private final int onC, offC;
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        Sw(Context c, Theme th, boolean cur, BoolCb cb) {
+            super(c);
+            this.on = cur; this.cb = cb;
+            this.onC = th.todayStroke;
+            this.offC = th.dark ? 0xFF5A5A60 : 0xFFB4B4BA;
+            setOnClickListener(v -> { on = !on; invalidate(); if (this.cb != null) this.cb.run(on); });
+        }
+
+        void set(boolean v) { on = v; invalidate(); }
+
+        @Override protected void onMeasure(int w, int h) { setMeasuredDimension(dp(58), dp(34)); }
+
+        @Override protected void onDraw(Canvas cv) {
+            float w = getWidth(), h = getHeight();
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(on ? onC : offC);
+            cv.drawRoundRect(new RectF(0, 0, w, h), h / 2, h / 2, p);
+            float r = h / 2f - dp(3.5f);
+            float cx = on ? w - h / 2f : h / 2f;
+            p.setColor(0x33000000);
+            cv.drawCircle(cx, h / 2f + dp(1), r, p);
+            p.setColor(0xFFFFFFFF);
+            cv.drawCircle(cx, h / 2f, r, p);
+        }
+    }
+
+    static Sw switchView(Context c, Theme th, boolean cur, BoolCb cb) { return new Sw(c, th, cur, cb); }
+
     static View toggle(Context c, Theme th, String label, boolean cur, BoolCb cb) {
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(8), 0, dp(8));
-        row.addView(text(c, label, 15, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        Switch sw = new Switch(c);
-        sw.setChecked(cur);
-        int[][] st = {{android.R.attr.state_checked}, {}};
-        sw.setTrackTintList(new ColorStateList(st, new int[]{th.todayStroke, th.soft}));
-        sw.setThumbTintList(new ColorStateList(st, new int[]{Color.WHITE, Color.WHITE}));
-        sw.setOnCheckedChangeListener((v, on) -> cb.run(on));
-        row.addView(sw);
+        row.setPadding(0, dp(9), 0, dp(9));
+        row.addView(text(c, label, 16, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(new Sw(c, th, cur, cb));
         return row;
+    }
+
+    /** 여러 개 고르는 칩 줄 (sel 배열을 직접 바꾼다) */
+    static View chips(Context c, Theme th, String[] labels, boolean[] sel, Runnable changed) {
+        LinearLayout row = new LinearLayout(c);
+        row.setPadding(0, dp(4), 0, dp(4));
+        for (int i = 0; i < labels.length; i++) {
+            final int ix = i;
+            TextView t = text(c, labels[i], 13, sel[i] ? Color.WHITE : th.fg, true);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(0, dp(9), 0, dp(9));
+            t.setBackground(round(sel[i] ? th.todayStroke : th.soft, 18));
+            t.setOnClickListener(v -> {
+                sel[ix] = !sel[ix];
+                t.setTextColor(sel[ix] ? Color.WHITE : th.fg);
+                t.setBackground(round(sel[ix] ? th.todayStroke : th.soft, 18));
+                if (changed != null) changed.run();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            lp.setMargins(dp(2), 0, dp(2), 0);
+            row.addView(t, lp);
+        }
+        return row;
+    }
+
+    /** 전체 화면 창 */
+    static android.app.Dialog fullDialog(android.app.Activity a, Theme th, View content) {
+        android.app.Dialog d = new android.app.Dialog(a, android.R.style.Theme_DeviceDefault_NoActionBar);
+        d.setContentView(content);
+        android.view.Window w = d.getWindow();
+        if (w != null) {
+            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(th.page));
+            w.setStatusBarColor(th.page);
+            w.setNavigationBarColor(th.page);
+            int f = w.getDecorView().getSystemUiVisibility();
+            if (!th.dark) f |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR; else f &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            w.getDecorView().setSystemUiVisibility(f);
+            w.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        }
+        return d;
+    }
+
+    /** 아래에서 올라오는 시트 (높이는 화면 비율) */
+    static android.app.Dialog sheetDialog(android.app.Activity a, Theme th, View content, float frac) {
+        android.app.Dialog d = new android.app.Dialog(a, android.R.style.Theme_DeviceDefault_NoActionBar);
+        d.setContentView(content);
+        android.view.Window w = d.getWindow();
+        if (w != null) {
+            int h = (int) (a.getResources().getDisplayMetrics().heightPixels * frac);
+            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, h);
+            w.setGravity(Gravity.BOTTOM);
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            w.setNavigationBarColor(th.card);
+            w.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        }
+        return d;
     }
 
     /** 색 고르기 (Theme.PALETTE 번호) */

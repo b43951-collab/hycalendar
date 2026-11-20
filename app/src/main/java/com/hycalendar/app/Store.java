@@ -37,14 +37,6 @@ final class Store {
     static void putB(String k, boolean v) { sp.edit().putBoolean(k, v).apply(); }
     static void putS(String k, String v) { sp.edit().putString(k, v).apply(); }
 
-    // ---- 메모 ----
-    static String memo(LocalDate d) { return sp.getString("m_" + d, ""); }
-
-    static void setMemo(LocalDate d, String s) {
-        if (s == null || s.trim().isEmpty()) sp.edit().remove("m_" + d).apply();
-        else sp.edit().putString("m_" + d, s.trim()).apply();
-    }
-
     // ---- 근태 ----
     private static synchronized List<Use> loadUses() {
         if (usesCache != null) return usesCache;
@@ -175,6 +167,8 @@ final class Store {
             }
             ed.commit();
             usesCache = null;
+            Memos.reset();
+            Alarms.reset();
             return true;
         } catch (Exception e) {
             return false;

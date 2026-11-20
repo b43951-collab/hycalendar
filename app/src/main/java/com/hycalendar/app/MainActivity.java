@@ -51,6 +51,10 @@ public class MainActivity extends Activity {
     private FrameLayout content;
     private TextView title;
     private CalView cal;
+    private DayUi dayUi;
+    private AlarmUi alarmUi;
+    private ScrollView settingsScroll;
+    private int pendingScroll = 0;
 
     private int dp(int v) { return (int) (v * dp + 0.5f); }
 
@@ -60,6 +64,11 @@ public class MainActivity extends Activity {
         Store.init(this);
         dp = getResources().getDisplayMetrics().density;
         leaveYear = Math.max(LeaveCore.START, LocalDate.now().getYear());
+        if (b != null) {
+            tab = b.getInt("tab", 0);
+            pendingScroll = b.getInt("scroll", 0);
+            ym = YearMonth.of(b.getInt("ymY", ym.getYear()), b.getInt("ymM", ym.getMonthValue()));
+        }
         versionBackup();
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1);
@@ -67,6 +76,58 @@ public class MainActivity extends Activity {
         buildUi();
         try { Alarms.schedule(this); } catch (Throwable ignored) { }
         WidgetBase.updateAll(this);
+        if (Store.getS("nick", "").isEmpty()) showNickDialog();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle o) {
+        super.onSaveInstanceState(o);
+        o.putInt("tab", tab);
+        o.putInt("scroll", settingsScroll != null && tab == 4 ? settingsScroll.getScrollY() : 0);
+        o.putInt("ymY", ym.getYear());
+        o.putInt("ymM", ym.getMonthValue());
+    }
+
+    // ---------- 첫 실행: 닉네임 지정 (서버 연동의 기준이 되는 값) ----------
+    private void showNickDialog() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(22), dp(20), dp(22), dp(16));
+        box.setBackground(Ui.round(th.card, 20));
+        box.addView(Ui.text(this, "닉네임을 정해 주세요", 20, th.fg, true));
+        TextView ex = Ui.text(this, "부부가 서로를 찾고 공유할 때 쓰는 이름이에요.\n한글 2~5글자, 나중에 설정에서 바꿀 수 있어요.", 13, th.sub, false);
+        ex.setPadding(0, dp(6), 0, dp(12));
+        box.addView(ex);
+        EditText et = new EditText(this);
+        et.setHint("예) 하이닉스남");
+        et.setHintTextColor(th.sub);
+        et.setTextColor(th.fg);
+        et.setTextSize(17);
+        et.setSingleLine(true);
+        et.setBackground(Ui.round(th.soft, 12));
+        et.setPadding(dp(14), dp(12), dp(14), dp(12));
+        box.addView(et);
+        TextView err = Ui.text(this, " ", 12, th.sun, false);
+        err.setPadding(dp(4), dp(6), 0, dp(10));
+        box.addView(err);
+        TextView ok = Ui.btn(this, th, "시작하기", true, null);
+        box.addView(ok);
+        final android.app.Dialog dlg = new android.app.Dialog(this, android.R.style.Theme_DeviceDefault_NoActionBar);
+        dlg.setContentView(box);
+        dlg.setCancelable(false);
+        dlg.setCanceledOnTouchOutside(false);
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            dlg.getWindow().setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.9f), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        ok.setOnClickListener(v -> {
+            String s = et.getText().toString().trim();
+            if (!s.matches("^[가-힣]{2,5}$")) { err.setText("한글 2~5글자로 입력해 주세요 (공백·숫자·영어 불가)"); return; }
+            Store.putS("nick", s);
+            dlg.dismiss();
+            toast("닉네임을 저장했어요 (중복 확인은 서버 연동 때 함께 적용돼요)");
+        });
+        dlg.show();
     }
 
     @Override
@@ -103,6 +164,8 @@ public class MainActivity extends Activity {
     private void buildUi() {
         Ui.init(this);
         th = Theme.get(Store.getS("theme", "auto"), Opts.systemDark(this));
+        dayUi = new DayUi(this, th, this::dataChanged);
+        alarmUi = new AlarmUi(this, th, () -> showTab(3));
         getWindow().setStatusBarColor(th.bg);
         getWindow().setNavigationBarColor(th.bg);
         int flags = getWindow().getDecorView().getSystemUiVisibility();
@@ -272,129 +335,7 @@ public class MainActivity extends Activity {
     }
 
     // ---------- 하루 상세 ----------
-    private void showDay(LocalDate d) {
-        Opts o = Opts.load(this, "", Renderer.COUPLE);
-        final android.app.Dialog dlg = new android.app.Dialog(this);
-        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
-        ScrollView sv = new ScrollView(this);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(20), dp(18), dp(20), dp(16));
-        box.setBackground(Ui.round(th.card, 20));
-        sv.addView(box);
-        dlg.setContentView(sv);
-        if (dlg.getWindow() != null) {
-            dlg.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-            dlg.getWindow().setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.92f), ViewGroup.LayoutParams.WRAP_CONTENT);
-        }
-
-        Lunar.Res lr = Lunar.of(d);
-        int dowIdx = d.getDayOfWeek().getValue() % 7;
-        TextView head = Ui.text(this, d.getMonthValue() + "월 " + d.getDayOfMonth() + "일 " + DOWS[dowIdx] + "요일", 20, dowIdx == 0 ? th.sun : dowIdx == 6 ? th.sat : th.fg, true);
-        box.addView(head);
-        String hol = Holidays.name(d);
-        box.addView(Ui.text(this, "음력 " + (lr.leap ? "윤" : "") + lr.m + "." + lr.d + (hol.isEmpty() ? "" : "  ·  " + hol), 13, hol.isEmpty() ? th.sub : th.sun, false));
-
-        char my = ShiftCore.typeFor(o.me, d), mt = ShiftCore.typeFor(o.mate, d);
-        LinearLayout sr = new LinearLayout(this);
-        sr.setPadding(0, dp(10), 0, dp(6));
-        sr.addView(shiftPill("나", my));
-        View gap = new View(this);
-        sr.addView(gap, new LinearLayout.LayoutParams(dp(8), 1));
-        sr.addView(shiftPill("배우자", mt));
-        box.addView(sr);
-
-        EditText et = new EditText(this);
-        et.setHint("메모 (줄바꿈으로 여러 개)");
-        et.setHintTextColor(th.sub);
-        et.setTextColor(th.fg);
-        et.setTextSize(15);
-        et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        et.setMinLines(3);
-        et.setGravity(Gravity.TOP);
-        et.setBackground(Ui.round(th.soft, 12));
-        et.setPadding(dp(12), dp(10), dp(12), dp(10));
-        et.setText(Store.memo(d));
-        box.addView(et, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        for (int who = 0; who < 2; who++) {
-            final int wf = who;
-            String wn = who == 0 ? "나" : "배우자";
-            char sh = who == 0 ? my : mt;
-            List<Store.Use> uses = Store.usesOn(d, who);
-            if (!uses.isEmpty()) {
-                LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                ml.setMargins(0, dp(12), 0, dp(2));
-                box.addView(Ui.text(this, wn + " 근태 기록", 12, th.sub, true), ml);
-                for (Store.Use u : uses) {
-                    LeaveCore.Type t = LeaveCore.type(u.key);
-                    LinearLayout row = new LinearLayout(this);
-                    row.setGravity(Gravity.CENTER_VERTICAL);
-                    row.addView(Ui.text(this, t == null ? u.key : t.label, 15, th.orange, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-                    row.addView(Ui.btn(this, th, "삭제", false, v -> {
-                        Store.setMemo(d, et.getText().toString());
-                        Store.removeUse(u.id);
-                        toast("취소했어요. 잔여가 복원됐어요");
-                        dlg.dismiss();
-                        dataChanged();
-                        showDay(d);
-                    }));
-                    box.addView(row);
-                }
-            }
-            if (sh != 'O') {
-                LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                ml.setMargins(0, dp(12), 0, dp(4));
-                box.addView(Ui.text(this, wn + " 근태 추가 (" + lbl(sh) + " 근무)", 12, th.sub, true), ml);
-                List<LeaveCore.Type> ok = new ArrayList<>();
-                for (LeaveCore.Type t : LeaveCore.TYPES) if (LeaveCore.allowed(t, sh)) ok.add(t);
-                for (int i = 0; i < ok.size(); i += 4) {
-                    LinearLayout row = new LinearLayout(this);
-                    for (int j = i; j < i + 4; j++) {
-                        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-                        lp.setMargins(dp(2), dp(2), dp(2), dp(2));
-                        if (j >= ok.size()) { row.addView(new View(this), lp); continue; }
-                        final LeaveCore.Type t = ok.get(j);
-                        TextView bt = Ui.btn(this, th, t.label, false, v -> {
-                            for (String k : Store.useKeysOn(d, wf)) if (k.equals(t.key)) { toast("이미 등록돼 있어요"); return; }
-                            Store.setMemo(d, et.getText().toString());
-                            double nb = Store.addUse(d, t, wf);
-                            if (Double.isNaN(nb)) {
-                                if (t.pool != null) toast(LeaveCore.START + "년 이전 기간은 차감 없이 기록만 해요");
-                            } else if (nb < 0) toast("잔여가 부족해요 (" + nb + ")");
-                            dlg.dismiss();
-                            dataChanged();
-                            showDay(d);
-                        });
-                        bt.setTextSize(12);
-                        bt.setPadding(dp(2), dp(9), dp(2), dp(9));
-                        row.addView(bt, lp);
-                    }
-                    box.addView(row);
-                }
-            }
-        }
-
-        LinearLayout act = new LinearLayout(this);
-        act.setPadding(0, dp(16), 0, 0);
-        LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        l1.setMargins(0, 0, dp(6), 0);
-        LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        l2.setMargins(dp(6), 0, 0, 0);
-        act.addView(Ui.btn(this, th, "닫기", false, v -> dlg.dismiss()), l1);
-        act.addView(Ui.btn(this, th, "저장", true, v -> { Store.setMemo(d, et.getText().toString()); dlg.dismiss(); dataChanged(); }), l2);
-        box.addView(act);
-        dlg.show();
-    }
-
-    private View shiftPill(String who, char t) {
-        TextView v = Ui.text(this, who + "  " + lbl(t), 14, t == 'O' ? th.offText : Theme.onColor(th.shiftColor(t)), true);
-        v.setPadding(dp(14), dp(6), dp(14), dp(6));
-        v.setBackground(Ui.round(t == 'O' ? th.soft : th.shiftColor(t), 16));
-        return v;
-    }
-
-    private String lbl(char t) { return t == 'O' ? "휴" : String.valueOf(t); }
+    private void showDay(LocalDate d) { dayUi.show(d); }
 
     // ---------- 근태 탭 ----------
     private int leaveWho = 0;
@@ -497,30 +438,7 @@ public class MainActivity extends Activity {
     }
 
     // ---------- 알람 탭 ----------
-    private View buildAlarm() {
-        ScrollView sv = new ScrollView(this);
-        LinearLayout box = vbox();
-        sv.addView(box);
-        box.addView(Ui.sectionTitle(this, th, "출근 알람"));
-        LinearLayout ac = Ui.card(this, th);
-        for (char t : Alarms.TYPES) ac.addView(alarmRow(t));
-        TextView nt = Ui.text(this, "내 근무일에만 울립니다. 휴무, 연차·연중·케어 종일, 검진·교육·장기근속인 날은 울리지 않습니다.", 11, th.sub, false);
-        nt.setPadding(0, dp(6), 0, 0);
-        ac.addView(nt);
-        box.addView(ac);
-
-        box.addView(Ui.sectionTitle(this, th, "다음 알람"));
-        LinearLayout uc = Ui.card(this, th);
-        List<String> up = Alarms.upcoming(this, 6);
-        if (up.isEmpty()) uc.addView(Ui.text(this, "예정된 알람이 없어요. 위에서 알람을 켜 주세요.", 13, th.sub, false));
-        for (String s2 : up) {
-            TextView t = Ui.text(this, s2, 14, th.fg, false);
-            t.setPadding(0, dp(4), 0, dp(4));
-            uc.addView(t);
-        }
-        box.addView(uc);
-        return sv;
-    }
+    private View buildAlarm() { return alarmUi.build(); }
 
     private String fmt(double v) {
         if (v == Math.floor(v)) return String.valueOf((long) v);
@@ -530,6 +448,8 @@ public class MainActivity extends Activity {
     // ---------- 설정 탭 ----------
     private View buildSettings() {
         ScrollView sv = new ScrollView(this);
+        settingsScroll = sv;
+        if (pendingScroll > 0) { final int ps = pendingScroll; pendingScroll = 0; sv.post(() -> sv.scrollTo(0, ps)); }
         LinearLayout box = vbox();
         sv.addView(box);
 
@@ -630,27 +550,6 @@ public class MainActivity extends Activity {
         return sv;
     }
 
-    private View alarmRow(char t) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.addView(Ui.toggle(this, th, t + " 근무일 알람", Alarms.enabled(t), on -> { Store.putB("al_" + t + "_on", on); Alarms.schedule(this); }),
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        int m = Alarms.minutes(t);
-        TextView[] tb = new TextView[1];
-        tb[0] = Ui.btn(this, th, String.format("%02d:%02d", m / 60, m % 60), false, v -> {
-            int cur = Alarms.minutes(t);
-            new TimePickerDialog(this, (view, h, mi) -> {
-                Store.putI("al_" + t + "_min", h * 60 + mi);
-                tb[0].setText(String.format("%02d:%02d", h, mi));
-                Alarms.schedule(this);
-            }, cur / 60, cur % 60, true).show();
-        });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(dp(12), 0, 0, 0);
-        row.addView(tb[0], lp);
-        return row;
-    }
-
     private View slider(String s, String key, float min, float max, float def) {
         return Ui.slider(this, th, s, min, max, Store.getF(key, def), v -> { Store.putF(key, v); });
     }
@@ -659,6 +558,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == AlarmUi.REQ_SOUND) { if (res == RESULT_OK && alarmUi != null) alarmUi.onSound(data); return; }
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         Uri u = data.getData();
         try {
