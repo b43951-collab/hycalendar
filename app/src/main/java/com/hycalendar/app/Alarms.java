@@ -36,6 +36,7 @@ public class Alarms extends BroadcastReceiver {
         int min = 330;
         String shifts = "";   // A B C O(휴) L(휴가)
         int dow;              // bit0=일 … bit6=토
+        boolean skipOff;      // 주말·공휴일 제외
         int dayOff;           // -1 전날, 0 당일, 1 다음날
         int autoOff = 5;      // 분, 0이면 안 함
         int snoozeMin;        // 0이면 다시 울림 없음
@@ -64,7 +65,7 @@ public class Alarms extends BroadcastReceiver {
                 JSONObject o = a.getJSONObject(i);
                 Item it = new Item();
                 it.id = o.getInt("id"); it.on = o.optBoolean("on", true); it.min = o.optInt("min", 330);
-                it.shifts = o.optString("sh"); it.dow = o.optInt("dw"); it.dayOff = o.optInt("do");
+                it.shifts = o.optString("sh"); it.dow = o.optInt("dw"); it.skipOff = o.optBoolean("sk", false); it.dayOff = o.optInt("do");
                 it.autoOff = o.optInt("ao", 5); it.snoozeMin = o.optInt("sn"); it.snoozeCnt = o.optInt("sc", 1);
                 it.cheer = o.optString("ch"); it.vib = o.optBoolean("vb", true); it.sound = o.optString("so");
                 l.add(it);
@@ -150,7 +151,7 @@ public class Alarms extends BroadcastReceiver {
         try {
             for (Item it : cache) {
                 JSONObject o = new JSONObject();
-                o.put("id", it.id); o.put("on", it.on); o.put("min", it.min); o.put("sh", it.shifts); o.put("dw", it.dow);
+                o.put("id", it.id); o.put("on", it.on); o.put("min", it.min); o.put("sh", it.shifts); o.put("dw", it.dow); o.put("sk", it.skipOff);
                 o.put("do", it.dayOff); o.put("ao", it.autoOff); o.put("sn", it.snoozeMin); o.put("sc", it.snoozeCnt);
                 o.put("ch", it.cheer); o.put("vb", it.vib); o.put("so", it.sound);
                 a.put(o);
@@ -162,6 +163,10 @@ public class Alarms extends BroadcastReceiver {
     // ---- 계산 ----
     /** d가 이 알람이 울릴 "근무 날짜"인가 */
     static boolean applies(Item it, LocalDate d) {
+        if (it.skipOff) {
+            int w = d.getDayOfWeek().getValue();
+            if (w >= 6 || !Holidays.name(d).isEmpty()) return false;   // 주말·공휴일 제외
+        }
         if (it.dow != 0 && (it.dow & (1 << (d.getDayOfWeek().getValue() % 7))) != 0) return true;
         return !it.shifts.isEmpty() && it.shifts.indexOf(Memos.cat(d)) >= 0;
     }
@@ -219,6 +224,7 @@ public class Alarms extends BroadcastReceiver {
             p.add(sb + " 근무");
         }
         if (it.dow != 0) p.add("매주 " + dowText(it.dow));
+        if (it.skipOff && !p.isEmpty()) p.add("주말·공휴일 제외");
         return p.isEmpty() ? "반복 없음" : String.join("  ·  ", p);
     }
 

@@ -269,6 +269,7 @@ final class AlarmUi {
             for (int i = 0; i < 7; i++) if (ds[i]) m |= 1 << i;
             it.dow = m;
         }));
+        rc.addView(Ui.toggle(act, th, "주말·공휴일 제외", it.skipOff, on -> it.skipOff = on));
         TextView rn = Ui.text(act, "근무와 요일 중 하나라도 맞는 날 울려요. 휴가·검진·교육 등 종일 휴무인 날은 '휴가'로 분류돼요.", 11, th.sub, false);
         rn.setPadding(0, dp(4), 0, 0);
         rc.addView(rn);
@@ -340,7 +341,7 @@ final class AlarmUi {
 
     private Alarms.Item copy(Alarms.Item s) {
         Alarms.Item n = new Alarms.Item();
-        n.id = s.id; n.on = s.on; n.min = s.min; n.shifts = s.shifts; n.dow = s.dow; n.dayOff = s.dayOff;
+        n.id = s.id; n.on = s.on; n.min = s.min; n.shifts = s.shifts; n.dow = s.dow; n.skipOff = s.skipOff; n.dayOff = s.dayOff;
         n.autoOff = s.autoOff; n.snoozeMin = s.snoozeMin; n.snoozeCnt = s.snoozeCnt; n.cheer = s.cheer; n.vib = s.vib; n.sound = s.sound;
         return n;
     }
