@@ -107,14 +107,17 @@ final class BoardUi {
             head.setGravity(Gravity.CENTER_VERTICAL);
             LinearLayout who = new LinearLayout(act);
             who.setOrientation(LinearLayout.VERTICAL);
-            who.addView(Ui.text(act, p.n.isEmpty() ? "가족" : p.n, 15, th.fg, true));
+            who.addView(Ui.text(act, p.n.isEmpty() ? "익명" : p.n, 15, th.fg, true));
             who.addView(Ui.text(act, f.format(new Date(p.ts)), 11, th.sub, false));
             head.addView(who, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            if (p.o.equals(me)) {
+            boolean mine = p.o.equals(me);
+            if (mine) {
                 TextView ed = Ui.text(act, "수정", 13, th.sub, true);
                 ed.setPadding(dp(10), dp(6), dp(10), dp(6));
                 ed.setOnClickListener(v -> editText(p));
                 head.addView(ed);
+            }
+            if (mine || Sync.isAdmin) {
                 TextView del = Ui.text(act, "삭제", 13, th.sun, true);
                 del.setPadding(dp(10), dp(6), dp(6), dp(6));
                 del.setOnClickListener(v -> new AlertDialog.Builder(act).setTitle("글 삭제").setMessage("이 글을 삭제할까요?")

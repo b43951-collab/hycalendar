@@ -377,12 +377,25 @@ final class Sync {
         List<String> ph = new ArrayList<>();
     }
 
+    /** 관리자 여부: Firestore의 admins/{내 uid} 문서가 있으면 true (콘솔에서만 만들 수 있음). */
+    static volatile boolean isAdmin = false;
+
+    static void checkAdmin() {
+        try {
+            if (!loggedIn()) { isAdmin = false; return; }
+            db().collection("admins").document(uid()).get()
+                    .addOnSuccessListener(d -> isAdmin = d != null && d.exists())
+                    .addOnFailureListener(e -> isAdmin = false);
+        } catch (Throwable t) { isAdmin = false; }
+    }
+
     interface PostsCb { void run(List<Post> posts); }
 
     /** 게시글을 실시간으로 받는다. 반환값을 실행하면 구독이 끝난다. */
     static Runnable listenPosts(PostsCb cb) {
         try {
             if (!loggedIn()) return () -> { };
+            checkAdmin();
             final ListenerRegistration r = db().collection("posts")
                     .orderBy("ts", com.google.firebase.firestore.Query.Direction.DESCENDING).limit(100)
                     .addSnapshotListener((qs, e) -> {
