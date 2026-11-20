@@ -61,6 +61,14 @@ final class Theme {
         }
     }
 
+    static final int[] PALETTE = {0xFFFFD400, 0xFFFF8A3D, 0xFF4CAF50, 0xFF2979FF, 0xFFFF4F81, 0xFF8E5CF7, 0xFF9E9E9E, 0xFF00BCD4, 0};
+
+    /** 나/배우자 줄 배경색 (idx: PALETTE 번호, 0이면 없음) */
+    static int tint(Theme t, int idx) {
+        if (idx < 0 || idx >= PALETTE.length || PALETTE[idx] == 0) return 0;
+        return blend(t.bg, PALETTE[idx], t.dark ? 0.24f : 0.16f);
+    }
+
     static int blend(int a, int b, float t) {
         return Color.rgb((int) (Color.red(a) * (1 - t) + Color.red(b) * t),
                 (int) (Color.green(a) * (1 - t) + Color.green(b) * t),

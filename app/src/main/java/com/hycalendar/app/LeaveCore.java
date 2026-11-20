@@ -84,4 +84,22 @@ public final class LeaveCore {
         if (shift == 'O') return false;
         return t.only == null || t.only.indexOf(shift) >= 0;
     }
+
+    /** 하루 휴무 알약에 표시할 문구: 해당 근태명 */
+    public static String offLabel(List<String> keys) {
+        for (String k : keys) {
+            Type t = type(k);
+            if (t != null && t.off) return t.label;
+        }
+        double yc = 0, jj = 0;
+        for (String k : keys) {
+            Type t = type(k);
+            if (t == null) continue;
+            if ("yc".equals(t.pool)) yc += t.amt;
+            if ("jj".equals(t.pool)) jj += t.amt;
+        }
+        if (yc >= jj && yc > 0) return "연차";
+        if (jj > 0) return "연중";
+        return "휴가";
+    }
 }

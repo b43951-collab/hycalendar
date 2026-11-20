@@ -10,6 +10,7 @@ final class Opts {
     float dateSize = 1f, shiftSize = 1f, mateScale = 0.8f, memoSize = 1f, gapDS = 0.1f, gapSM = 0.1f;
     int lunar = 1;      // 0 끔, 1 초하루·보름, 2 전체
     int shape = 0;      // 0 원, 1 둥근 사각, 2 사각
+    int meTint, mateTint;
     boolean monStart, fixed6, lines = true, showMemo = true, holiday = true, drawBg = true, widgetStyle = false;
 
     static boolean systemDark(Context c) {
@@ -48,6 +49,8 @@ final class Opts {
             else if (style == 2) tn = "dark";
         }
         o.theme = Theme.get(tn, systemDark(c));
+        o.meTint = Theme.tint(o.theme, Store.getI("c_me", 0));
+        o.mateTint = Theme.tint(o.theme, Store.getI("c_mate", 1));
         return o;
     }
 }

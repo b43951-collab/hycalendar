@@ -30,6 +30,26 @@ public class Alarms extends BroadcastReceiver {
 
     static boolean enabled(char t) { return Store.getB("al_" + t + "_on", false); }
 
+    /** 앞으로 울릴 알람 목록 (설정 화면 표시용) */
+    static java.util.List<String> upcoming(Context c, int n) {
+        Store.init(c);
+        java.util.List<String> r = new java.util.ArrayList<>();
+        int me = Store.getI("grp_me", 1);
+        LocalDate today = LocalDate.now();
+        String[] dow = {"일", "월", "화", "수", "목", "금", "토"};
+        long now = System.currentTimeMillis();
+        for (int off = 0; off < 60 && r.size() < n; off++) {
+            LocalDate d = today.plusDays(off);
+            char t = ShiftCore.typeFor(me, d);
+            if (t == 'O' || !enabled(t) || LeaveCore.isOff(Store.useKeysOn(d))) continue;
+            int mins = minutes(t);
+            long at = LocalDateTime.of(d, java.time.LocalTime.of(mins / 60, mins % 60)).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            if (at <= now) continue;
+            r.add(d.getMonthValue() + "/" + d.getDayOfMonth() + " (" + dow[d.getDayOfWeek().getValue() % 7] + ")  " + t + "근무  " + String.format("%02d:%02d", mins / 60, mins % 60));
+        }
+        return r;
+    }
+
     private static PendingIntent pi(Context c, int code, String text) {
         Intent i = new Intent(c, Alarms.class).setAction(ACTION_RING).putExtra("text", text).putExtra("code", code);
         return PendingIntent.getBroadcast(c, code, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

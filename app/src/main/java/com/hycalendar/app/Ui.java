@@ -118,6 +118,41 @@ final class Ui {
         return row;
     }
 
+    /** 색 고르기 (Theme.PALETTE 번호) */
+    static View swatches(Context c, Theme th, int cur, IntCb cb) {
+        LinearLayout row = new LinearLayout(c);
+        row.setPadding(0, dp(4), 0, dp(8));
+        View[] vs = new View[Theme.PALETTE.length];
+        for (int i = 0; i < Theme.PALETTE.length; i++) {
+            TextView v = new TextView(c);
+            v.setGravity(Gravity.CENTER);
+            v.setTextSize(11);
+            v.setTextColor(th.sub);
+            final int ix = i;
+            vs[i] = v;
+            paintSwatch(th, v, i, i == cur);
+            v.setOnClickListener(x -> {
+                for (int j = 0; j < vs.length; j++) paintSwatch(th, (TextView) vs[j], j, j == ix);
+                cb.run(ix);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(32), 1);
+            lp.setMargins(dp(2), 0, dp(2), 0);
+            row.addView(v, lp);
+        }
+        return row;
+    }
+
+    private static void paintSwatch(Theme th, TextView v, int i, boolean sel) {
+        int base = Theme.PALETTE[i];
+        int fill = base == 0 ? th.card : Theme.tint(th, i);
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
+        g.setColor(fill);
+        g.setStroke(dp(sel ? 2.5f : 1f), sel ? th.todayStroke : th.line);
+        v.setBackground(g);
+        v.setText(base == 0 ? "없음" : "");
+    }
+
     /** 슬라이더: 오른쪽에 현재 값을 보여준다. */
     static View slider(Context c, Theme th, String label, float min, float max, float cur, FloatCb cb) {
         LinearLayout l = new LinearLayout(c);
@@ -192,6 +227,14 @@ final class Ui {
                     p.setStrokeCap(Paint.Cap.ROUND);
                     cv.drawLine(12, 7.5f, 12, 12.5f, p);
                     cv.drawLine(12, 12.5f, 15.5f, 14.5f, p);
+                    break;
+                case 5: // 근태 (서류판)
+                    cv.drawRoundRect(new RectF(4.5f, 4, 19.5f, 21.5f), 2.5f, 2.5f, p);
+                    cv.drawRoundRect(new RectF(8.5f, 2, 15.5f, 6.5f), 1.5f, 1.5f, p);
+                    p.setColor(0xFFFFFFFF);
+                    cv.drawRect(8, 10.5f, 16, 11.8f, p);
+                    cv.drawRect(8, 14, 16, 15.3f, p);
+                    cv.drawRect(8, 17.5f, 13, 18.8f, p);
                     break;
                 default: // 설정 (톱니)
                     p.setStyle(Paint.Style.STROKE);

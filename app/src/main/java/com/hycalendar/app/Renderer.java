@@ -47,7 +47,7 @@ final class Renderer {
 
     // ===== 부부 / 4개조: 주 단위 표 (날짜 줄 + 조별 줄) =====
     private static final class GL {
-        float labelW, cw, hdrH, rowH, gap, dateH; int weeks, offset, per;
+        float labelW, cw, hdrH, rowH, rowH4, gap, dateH; int weeks, offset, per;
         float blockH() { return dateH + per * rowH + gap; }
     }
 
@@ -62,6 +62,7 @@ final class Renderer {
         g.gap = h * 0.005f;
         float rowH = (h - g.weeks * g.gap) / (0.55f + g.weeks * (0.5f + g.per));
         g.rowH = Math.min(rowH, g.cw * 1.1f);
+        g.rowH4 = Math.min((h - g.weeks * g.gap) / (0.55f + g.weeks * 4.5f), g.cw * 1.1f);
         g.hdrH = g.rowH * 0.55f;
         g.dateH = g.rowH * 0.5f;
         return g;
@@ -102,9 +103,10 @@ final class Renderer {
                 boolean isMe = o.mode == COUPLE ? r == 0 : grp == o.me;
                 boolean isMate = o.mode == COUPLE ? r == 1 : grp == o.mate;
                 float ry = y0 + g.dateH + r * g.rowH;
-                if (isMe || isMate) {
+                int tint = isMe ? o.meTint : isMate ? o.mateTint : 0;
+                if (tint != 0) {
                     p.setStyle(Paint.Style.FILL);
-                    p.setColor(isMe ? th.rowMe : th.rowMate);
+                    p.setColor(tint);
                     c.drawRect(0, ry, w, ry + g.rowH, p);
                 }
                 p.setStyle(Paint.Style.FILL);
@@ -133,21 +135,19 @@ final class Renderer {
                 p.setTextSize(dsz);
                 c.drawText(String.valueOf(date.getDayOfMonth()), cx + g.cw / 2, y0 + g.dateH * 0.5f + dsz * 0.36f, p);
 
-                List<String> keys = Store.useKeysOn(date);
-                boolean off = LeaveCore.isOff(keys);
-                String offLabel = "휴가";
-                for (String k : keys) {
-                    LeaveCore.Type t = LeaveCore.type(k);
-                    if (t != null && t.off && t.pool == null) { offLabel = t.label; break; }
-                }
+                List<String> keys = Store.useKeysOn(date, 0), mkeys = Store.useKeysOn(date, 1);
+                boolean off = LeaveCore.isOff(keys), moff = LeaveCore.isOff(mkeys);
+                String offLabel = LeaveCore.offLabel(keys), moffLabel = LeaveCore.offLabel(mkeys);
                 for (int r = 0; r < g.per; r++) {
                     int grp = o.mode == COUPLE ? (r == 0 ? o.me : o.mate) : r + 1;
                     boolean isMe = o.mode == COUPLE ? r == 0 : grp == o.me;
-                    float cs = Math.min(g.rowH * 0.74f, g.cw * 0.62f) * o.shiftSize * ((o.mode == COUPLE && r == 1) ? o.mateScale : 1f);
+                    boolean isMate = o.mode == COUPLE ? r == 1 : grp == o.mate;
+                    float cs = Math.min(g.rowH4 * 0.74f, g.cw * 0.62f) * o.shiftSize;
                     cs = Math.min(cs, g.rowH * 0.92f);
                     float ry = y0 + g.dateH + r * g.rowH;
+                    boolean lo = isMe ? off : isMate && moff;
                     drawChip(c, p, th, cx + g.cw / 2, ry + (g.rowH - cs) / 2f, cs, g.cw * 0.92f,
-                            ShiftCore.typeFor(grp, date), isMe && off, offLabel, 0, o.shape);
+                            ShiftCore.typeFor(grp, date), lo, isMe ? offLabel : moffLabel, 0, o.shape);
                 }
                 if (save >= 0) c.restoreToCount(save);
             }
@@ -306,11 +306,10 @@ final class Renderer {
         List<String> keys = new ArrayList<>();
         for (Store.Use u : uses) keys.add(u.key);
         boolean off = LeaveCore.isOff(keys);
-        String offLabel = "휴가";
-        for (String k : keys) {
-            LeaveCore.Type t = LeaveCore.type(k);
-            if (t != null && t.off && t.pool == null) { offLabel = t.label; break; }
-        }
+        String offLabel = LeaveCore.offLabel(keys);
+        List<String> mkeys = Store.useKeysOn(date, 1);
+        boolean moff = LeaveCore.isOff(mkeys);
+        String moffLabel = LeaveCore.offLabel(mkeys);
 
         List<int[]> rowsDef = new ArrayList<>();
         float baseChip;
@@ -334,9 +333,9 @@ final class Renderer {
             float chipH = hs[i] * scale;
             int[] rd = rowsDef.get(i);
             char type = ShiftCore.typeFor(rd[0], date);
-            boolean leaveOff = rd[1] == 1 && off;
+            boolean leaveOff = rd[1] == 1 ? off : rd[1] == 2 && moff;
             int ring = o.mode != SINGLE ? (rd[1] == 1 ? th.meRing : rd[1] == 2 ? th.mateRing : 0) : 0;
-            drawChip(c, p, th, cx + cw / 2, cursor, chipH, cw - 2 * pad, type, leaveOff, offLabel, ring, o.shape);
+            drawChip(c, p, th, cx + cw / 2, cursor, chipH, cw - 2 * pad, type, leaveOff, rd[1] == 2 ? moffLabel : offLabel, ring, o.shape);
             cursor += chipH + rowGap;
         }
 
@@ -379,7 +378,7 @@ final class Renderer {
         float cy = top + h / 2f;
         if (leaveOff) {
             // 휴가 알약
-            float pw = Math.min(maxW, h * 1.9f), ph = h * 0.82f;
+            float pw = Math.min(maxW, h * (offLabel.length() > 2 ? 2.5f : 1.9f)), ph = h * 0.82f;
             RectF r = new RectF(mx - pw / 2, cy - ph / 2, mx + pw / 2, cy + ph / 2);
             p.setColor(th.orange);
             c.drawRoundRect(r, ph / 2, ph / 2, p);

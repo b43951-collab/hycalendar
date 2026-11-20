@@ -150,7 +150,8 @@ public class MainActivity extends Activity {
         tabbar = new LinearLayout(this);
         tabbar.setOrientation(LinearLayout.HORIZONTAL);
         tabbar.setBackgroundColor(th.bg);
-        String[] names = {"달력", "부부", "4개조", "근태", "설정"};
+        String[] names = {"달력", "근무표", "근태", "알람", "설정"};
+        int[] icons = {0, 1, 5, 3, 4};
         for (int i = 0; i < names.length; i++) {
             final int ix = i;
             LinearLayout cell = new LinearLayout(this);
@@ -160,7 +161,7 @@ public class MainActivity extends Activity {
             View bar = new View(this);
             bar.setTag("bar");
             cell.addView(bar, new LinearLayout.LayoutParams(dp(34), dp(3)));
-            Ui.TabIcon ic = new Ui.TabIcon(this, i);
+            Ui.TabIcon ic = new Ui.TabIcon(this, icons[i]);
             ic.setTag("ic");
             LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(26), dp(26));
             ip.setMargins(0, dp(6), 0, dp(1));
@@ -191,17 +192,30 @@ public class MainActivity extends Activity {
             ((TextView) cell.findViewWithTag("lb")).setTextColor(on ? th.todayStroke : th.sub);
             cell.findViewWithTag("bar").setBackgroundColor(on ? th.todayStroke : 0);
         }
-        if (i <= 2) {
+        if (i <= 1) {
             header.setVisibility(View.VISIBLE);
-            cal = new CalView(i);
-            content.addView(cal, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            content.setBackgroundColor(th.bg);
+            if (i == 0) {
+                cal = new CalView(Renderer.SINGLE);
+                content.addView(cal, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            } else {
+                int sub = Store.getI("grp_sub", 0);
+                LinearLayout col = new LinearLayout(this);
+                col.setOrientation(LinearLayout.VERTICAL);
+                View seg = Ui.segmented(this, th, new String[]{"부부", "4개조"}, sub, ix -> { Store.putI("grp_sub", ix); showTab(1); });
+                LinearLayout.LayoutParams sp = (LinearLayout.LayoutParams) seg.getLayoutParams();
+                sp.setMargins(dp(14), dp(2), dp(14), dp(6));
+                col.addView(seg);
+                cal = new CalView(sub == 0 ? Renderer.COUPLE : Renderer.FOUR);
+                col.addView(cal, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+                content.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
             refreshTitle();
         } else {
             header.setVisibility(View.GONE);
             content.setBackgroundColor(th.page);
-            content.addView(i == 3 ? buildLeave() : buildSettings());
+            content.addView(i == 2 ? buildLeave() : i == 3 ? buildAlarm() : buildSettings());
         }
-        if (i <= 2) content.setBackgroundColor(th.bg);
     }
 
     private void refreshTitle() { title.setText(ym.getYear() + ". " + ym.getMonthValue()); }
@@ -216,7 +230,7 @@ public class MainActivity extends Activity {
         Alarms.schedule(this);
         WidgetBase.updateAll(this);
         if (cal != null) cal.invalidate();
-        if (tab == 3) showTab(3);
+        if (tab == 2) showTab(2);
     }
 
     // ---------- 달력 뷰 ----------
@@ -303,57 +317,61 @@ public class MainActivity extends Activity {
         et.setText(Store.memo(d));
         box.addView(et, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        List<Store.Use> uses = Store.usesOn(d);
-        if (!uses.isEmpty()) {
-            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            ml.setMargins(0, dp(14), 0, dp(2));
-            box.addView(Ui.text(this, "근태 기록", 12, th.sub, true), ml);
-            for (Store.Use u : uses) {
-                LeaveCore.Type t = LeaveCore.type(u.key);
-                LinearLayout row = new LinearLayout(this);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.addView(Ui.text(this, t == null ? u.key : t.label, 15, th.orange, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-                row.addView(Ui.btn(this, th, "삭제", false, v -> {
-                    Store.setMemo(d, et.getText().toString());
-                    Store.removeUse(u.id);
-                    toast("취소했어요. 잔여가 복원됐어요");
-                    dlg.dismiss();
-                    dataChanged();
-                    showDay(d);
-                }));
-                box.addView(row);
-            }
-        }
-
-        if (my != 'O') {
-            LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            ml.setMargins(0, dp(14), 0, dp(4));
-            box.addView(Ui.text(this, "근태 사용 추가", 12, th.sub, true), ml);
-            List<LeaveCore.Type> ok = new ArrayList<>();
-            for (LeaveCore.Type t : LeaveCore.TYPES) if (LeaveCore.allowed(t, my)) ok.add(t);
-            for (int i = 0; i < ok.size(); i += 3) {
-                LinearLayout row = new LinearLayout(this);
-                for (int j = i; j < i + 3; j++) {
-                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-                    lp.setMargins(dp(3), dp(3), dp(3), dp(3));
-                    if (j >= ok.size()) { row.addView(new View(this), lp); continue; }
-                    final LeaveCore.Type t = ok.get(j);
-                    TextView bt = Ui.btn(this, th, t.label, false, v -> {
-                        for (String k : Store.useKeysOn(d)) if (k.equals(t.key)) { toast("이미 등록돼 있어요"); return; }
+        for (int who = 0; who < 2; who++) {
+            final int wf = who;
+            String wn = who == 0 ? "나" : "배우자";
+            char sh = who == 0 ? my : mt;
+            List<Store.Use> uses = Store.usesOn(d, who);
+            if (!uses.isEmpty()) {
+                LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ml.setMargins(0, dp(12), 0, dp(2));
+                box.addView(Ui.text(this, wn + " 근태 기록", 12, th.sub, true), ml);
+                for (Store.Use u : uses) {
+                    LeaveCore.Type t = LeaveCore.type(u.key);
+                    LinearLayout row = new LinearLayout(this);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    row.addView(Ui.text(this, t == null ? u.key : t.label, 15, th.orange, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                    row.addView(Ui.btn(this, th, "삭제", false, v -> {
                         Store.setMemo(d, et.getText().toString());
-                        double nb = Store.addUse(d, t);
-                        if (Double.isNaN(nb)) {
-                            if (t.pool != null) toast(LeaveCore.START + "년 이전 기간은 차감 없이 기록만 해요");
-                        } else if (nb < 0) toast("잔여가 부족해요 (" + nb + ")");
+                        Store.removeUse(u.id);
+                        toast("취소했어요. 잔여가 복원됐어요");
                         dlg.dismiss();
                         dataChanged();
                         showDay(d);
-                    });
-                    bt.setTextSize(13);
-                    bt.setPadding(dp(4), dp(10), dp(4), dp(10));
-                    row.addView(bt, lp);
+                    }));
+                    box.addView(row);
                 }
-                box.addView(row);
+            }
+            if (sh != 'O') {
+                LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ml.setMargins(0, dp(12), 0, dp(4));
+                box.addView(Ui.text(this, wn + " 근태 추가 (" + lbl(sh) + " 근무)", 12, th.sub, true), ml);
+                List<LeaveCore.Type> ok = new ArrayList<>();
+                for (LeaveCore.Type t : LeaveCore.TYPES) if (LeaveCore.allowed(t, sh)) ok.add(t);
+                for (int i = 0; i < ok.size(); i += 4) {
+                    LinearLayout row = new LinearLayout(this);
+                    for (int j = i; j < i + 4; j++) {
+                        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+                        lp.setMargins(dp(2), dp(2), dp(2), dp(2));
+                        if (j >= ok.size()) { row.addView(new View(this), lp); continue; }
+                        final LeaveCore.Type t = ok.get(j);
+                        TextView bt = Ui.btn(this, th, t.label, false, v -> {
+                            for (String k : Store.useKeysOn(d, wf)) if (k.equals(t.key)) { toast("이미 등록돼 있어요"); return; }
+                            Store.setMemo(d, et.getText().toString());
+                            double nb = Store.addUse(d, t, wf);
+                            if (Double.isNaN(nb)) {
+                                if (t.pool != null) toast(LeaveCore.START + "년 이전 기간은 차감 없이 기록만 해요");
+                            } else if (nb < 0) toast("잔여가 부족해요 (" + nb + ")");
+                            dlg.dismiss();
+                            dataChanged();
+                            showDay(d);
+                        });
+                        bt.setTextSize(12);
+                        bt.setPadding(dp(2), dp(9), dp(2), dp(9));
+                        row.addView(bt, lp);
+                    }
+                    box.addView(row);
+                }
             }
         }
 
@@ -379,66 +397,86 @@ public class MainActivity extends Activity {
     private String lbl(char t) { return t == 'O' ? "휴" : String.valueOf(t); }
 
     // ---------- 근태 탭 ----------
+    private int leaveWho = 0;
+
     private View buildLeave() {
         ScrollView sv = new ScrollView(this);
         LinearLayout box = vbox();
         sv.addView(box);
 
-        LinearLayout yc = Ui.card(this, th);
+        LinearLayout top = Ui.card(this, th);
+        top.setPadding(dp(14), dp(8), dp(14), dp(6));
         LinearLayout yr = new LinearLayout(this);
         yr.setGravity(Gravity.CENTER_VERTICAL);
-        TextView p = Ui.text(this, "‹", 26, th.fg, false); p.setGravity(Gravity.CENTER);
-        p.setOnClickListener(v -> { leaveYear = Math.max(LeaveCore.START, leaveYear - 1); showTab(3); });
-        TextView n = Ui.text(this, "›", 26, th.fg, false); n.setGravity(Gravity.CENTER);
-        n.setOnClickListener(v -> { leaveYear++; showTab(3); });
-        TextView yt = Ui.text(this, leaveYear + "년", 20, th.fg, true); yt.setGravity(Gravity.CENTER);
-        yr.addView(p, new LinearLayout.LayoutParams(dp(56), dp(40)));
-        yr.addView(yt, new LinearLayout.LayoutParams(0, dp(40), 1));
-        yr.addView(n, new LinearLayout.LayoutParams(dp(56), dp(40)));
-        yc.addView(yr);
-        yc.addView(Ui.text(this, "연도를 고르고 잔여를 입력해 저장하세요. 연차는 전년 12.18~금년 12.17, 그 외는 1.1~12.31 기준이며 사용한 날짜가 속한 기간에서 차감·복원됩니다. 1개=8시간 (0.5=오전/오후, 0.25=2시간, 0.125=1시간)", 12, th.sub, false));
-        box.addView(yc);
+        TextView p = Ui.text(this, "‹", 24, th.fg, false); p.setGravity(Gravity.CENTER);
+        p.setOnClickListener(v -> { leaveYear = Math.max(LeaveCore.START, leaveYear - 1); showTab(2); });
+        TextView n = Ui.text(this, "›", 24, th.fg, false); n.setGravity(Gravity.CENTER);
+        n.setOnClickListener(v -> { leaveYear++; showTab(2); });
+        TextView yt = Ui.text(this, leaveYear + "년", 18, th.fg, true); yt.setGravity(Gravity.CENTER);
+        yr.addView(p, new LinearLayout.LayoutParams(dp(48), dp(32)));
+        yr.addView(yt, new LinearLayout.LayoutParams(0, dp(32), 1));
+        yr.addView(n, new LinearLayout.LayoutParams(dp(48), dp(32)));
+        top.addView(yr);
+        top.addView(Ui.segmented(this, th, new String[]{"나", "배우자"}, leaveWho, i -> { leaveWho = i; showTab(2); }));
+        box.addView(top);
 
+        final int who = leaveWho;
+        LinearLayout pc = Ui.card(this, th);
+        pc.setPadding(dp(14), dp(4), dp(14), dp(4));
         for (String pool : LeaveCore.POOLS) {
-            LinearLayout cd = Ui.card(this, th);
-            double bal = Store.bal(pool, leaveYear), used = Store.used(pool, leaveYear);
-            LinearLayout top = new LinearLayout(this);
-            top.setGravity(Gravity.CENTER_VERTICAL);
-            TextView name = Ui.text(this, LeaveCore.poolName(pool), 16, th.fg, true);
-            top.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            top.addView(Ui.text(this, "잔여 " + fmt(bal), 18, bal < 0 ? th.sun : th.todayStroke, true));
-            cd.addView(top);
-            cd.addView(Ui.text(this, LeaveCore.periodText(pool, leaveYear) + "  ·  사용 " + fmt(used), 12, th.sub, false));
+            double bal = Store.bal(pool, leaveYear, who), used = Store.used(pool, leaveYear, who);
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(0, dp(8), 0, 0);
+            row.setPadding(0, dp(7), 0, dp(7));
+            LinearLayout left = new LinearLayout(this);
+            left.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout nm = new LinearLayout(this);
+            nm.setGravity(Gravity.CENTER_VERTICAL);
+            nm.addView(Ui.text(this, LeaveCore.poolName(pool), 15, th.fg, true));
+            TextView bl = Ui.text(this, "  잔여 " + fmt(bal), 14, bal < 0 ? th.sun : th.todayStroke, true);
+            nm.addView(bl);
+            left.addView(nm);
+            left.addView(Ui.text(this, LeaveCore.periodText(pool, leaveYear).replace("20", "").replace(" ~ ", "~") + " · 사용 " + fmt(used), 11, th.sub, false));
+            row.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
             EditText et = new EditText(this);
             et.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
             et.setText(fmt(bal));
+            et.setTextSize(14);
             et.setTextColor(th.fg);
-            et.setBackground(Ui.round(th.soft, 10));
-            et.setPadding(dp(12), dp(8), dp(12), dp(8));
+            et.setBackground(Ui.round(th.soft, 8));
+            et.setPadding(dp(8), dp(6), dp(8), dp(6));
             et.setGravity(Gravity.END);
-            LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-            ep.setMargins(0, 0, dp(8), 0);
+            LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.WRAP_CONTENT);
+            ep.setMargins(0, 0, dp(6), 0);
             row.addView(et, ep);
-            row.addView(Ui.btn(this, th, "저장", true, v -> {
+            TextView sb = Ui.btn(this, th, "저장", true, v -> {
                 try {
-                    Store.setBal(pool, leaveYear, Double.parseDouble(et.getText().toString().trim()));
+                    Store.setBal(pool, leaveYear, who, Double.parseDouble(et.getText().toString().trim()));
                     toast(leaveYear + "년 잔여를 저장했어요");
-                    showTab(3);
+                    showTab(2);
                 } catch (Exception e) { toast("숫자를 입력하세요"); }
-            }));
-            cd.addView(row);
-            box.addView(cd);
+            });
+            sb.setTextSize(13);
+            sb.setPadding(dp(12), dp(7), dp(12), dp(7));
+            row.addView(sb);
+            pc.addView(row);
+            View dv = new View(this);
+            dv.setBackgroundColor(th.line);
+            pc.addView(dv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
         }
+        box.addView(pc);
+        TextView note = Ui.text(this, "연차 기간은 전년 12.18~금년 12.17, 그 외 1.1~12.31 기준 · 1개=8시간 (0.5 오전/오후, 0.25 2시간, 0.125 1시간)", 11, th.sub, false);
+        note.setPadding(dp(6), 0, dp(6), dp(8));
+        box.addView(note);
 
         box.addView(Ui.sectionTitle(this, th, leaveYear + "년 사용 내역"));
         LinearLayout hc = Ui.card(this, th);
+        hc.setPadding(dp(14), dp(6), dp(14), dp(6));
         List<Store.Use> uses = Store.allUses();
-        Collections.sort(uses, (a, b) -> a.date.compareTo(b.date));
+        Collections.sort(uses, (a2, b2) -> a2.date.compareTo(b2.date));
         boolean any = false;
         for (Store.Use u : uses) {
+            if (u.who != who) continue;
             LeaveCore.Type t = LeaveCore.type(u.key);
             if (t == null) continue;
             int py = t.pool != null ? LeaveCore.pyear(t.pool, u.date) : u.date.getYear();
@@ -446,12 +484,41 @@ public class MainActivity extends Activity {
             any = true;
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.addView(Ui.text(this, u.date + "  " + t.label, 14, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            row.addView(Ui.btn(this, th, "삭제", false, v -> { Store.removeUse(u.id); dataChanged(); }));
+            row.addView(Ui.text(this, u.date.getMonthValue() + "/" + u.date.getDayOfMonth() + "  " + t.label, 13, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            TextView del = Ui.text(this, "삭제", 12, th.sub, false);
+            del.setPadding(dp(10), dp(6), dp(10), dp(6));
+            del.setOnClickListener(v -> { Store.removeUse(u.id); dataChanged(); });
+            row.addView(del);
             hc.addView(row);
         }
-        if (!any) hc.addView(Ui.text(this, "사용 내역이 없어요. 달력에서 날짜를 눌러 등록하세요.", 13, th.sub, false));
+        if (!any) hc.addView(Ui.text(this, "사용 내역이 없어요. 달력에서 날짜를 눌러 등록하세요.", 12, th.sub, false));
         box.addView(hc);
+        return sv;
+    }
+
+    // ---------- 알람 탭 ----------
+    private View buildAlarm() {
+        ScrollView sv = new ScrollView(this);
+        LinearLayout box = vbox();
+        sv.addView(box);
+        box.addView(Ui.sectionTitle(this, th, "출근 알람"));
+        LinearLayout ac = Ui.card(this, th);
+        for (char t : Alarms.TYPES) ac.addView(alarmRow(t));
+        TextView nt = Ui.text(this, "내 근무일에만 울립니다. 휴무, 연차·연중·케어 종일, 검진·교육·장기근속인 날은 울리지 않습니다.", 11, th.sub, false);
+        nt.setPadding(0, dp(6), 0, 0);
+        ac.addView(nt);
+        box.addView(ac);
+
+        box.addView(Ui.sectionTitle(this, th, "다음 알람"));
+        LinearLayout uc = Ui.card(this, th);
+        List<String> up = Alarms.upcoming(this, 6);
+        if (up.isEmpty()) uc.addView(Ui.text(this, "예정된 알람이 없어요. 위에서 알람을 켜 주세요.", 13, th.sub, false));
+        for (String s2 : up) {
+            TextView t = Ui.text(this, s2, 14, th.fg, false);
+            t.setPadding(0, dp(4), 0, dp(4));
+            uc.addView(t);
+        }
+        box.addView(uc);
         return sv;
     }
 
@@ -472,6 +539,10 @@ public class MainActivity extends Activity {
         g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_me", 1) - 1, i -> { Store.putI("grp_me", i + 1); dataChanged(); }));
         g.addView(Ui.text(this, "배우자", 13, th.sub, false));
         g.addView(Ui.segmented(this, th, new String[]{"1조", "2조", "3조", "4조"}, Store.getI("grp_mate", 4) - 1, i -> { Store.putI("grp_mate", i + 1); dataChanged(); }));
+        g.addView(Ui.text(this, "나 줄 배경색", 13, th.sub, false));
+        g.addView(Ui.swatches(this, th, Store.getI("c_me", 0), i -> { Store.putI("c_me", i); dataChanged(); }));
+        g.addView(Ui.text(this, "배우자 줄 배경색", 13, th.sub, false));
+        g.addView(Ui.swatches(this, th, Store.getI("c_mate", 1), i -> { Store.putI("c_mate", i); dataChanged(); }));
         box.addView(g);
 
         box.addView(Ui.sectionTitle(this, th, "내 정보"));
@@ -524,16 +595,10 @@ public class MainActivity extends Activity {
         sc.addView(Ui.segmented(this, th, new String[]{"안 함", "초하루·보름", "매일"}, Store.getI("lunar", 1), i -> { Store.putI("lunar", i); dataChanged(); }));
         sc.addView(slider("날짜 글씨 크기", "s_date", 0.6f, 1.6f, 1f));
         sc.addView(slider("근무 표시 크기", "s_shift", 0.5f, 1.6f, 1f));
-        sc.addView(slider("배우자 근무 크기 (부부 탭)", "s_mate", 0.4f, 1.2f, 0.8f));
-        sc.addView(slider("메모 글씨 크기", "s_memo", 0.6f, 1.6f, 1f));
+                sc.addView(slider("메모 글씨 크기", "s_memo", 0.6f, 1.6f, 1f));
         sc.addView(slider("날짜 ↔ 근무 간격", "s_gapds", 0f, 1f, 0.1f));
         sc.addView(slider("근무 ↔ 메모 간격", "s_gapsm", 0f, 1f, 0.1f));
         box.addView(sc);
-
-        box.addView(Ui.sectionTitle(this, th, "출근 알람 (휴무·연차 종일·검진·교육은 울리지 않음)"));
-        LinearLayout ac = Ui.card(this, th);
-        for (char t : Alarms.TYPES) ac.addView(alarmRow(t));
-        box.addView(ac);
 
         box.addView(Ui.sectionTitle(this, th, "백업·복원"));
         LinearLayout bc = Ui.card(this, th);
