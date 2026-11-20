@@ -322,6 +322,15 @@ final class Ui {
                     cv.drawRect(8, 14, 16, 15.3f, p);
                     cv.drawRect(8, 17.5f, 13, 18.8f, p);
                     break;
+                case 6: // 게시판 (말풍선)
+                    cv.drawRoundRect(new RectF(3, 3.5f, 21, 17), 3.5f, 3.5f, p);
+                    android.graphics.Path tail = new android.graphics.Path();
+                    tail.moveTo(8, 16.5f); tail.lineTo(8, 21.5f); tail.lineTo(13, 16.5f); tail.close();
+                    cv.drawPath(tail, p);
+                    p.setColor(0xFFFFFFFF);
+                    cv.drawRect(7, 7.5f, 17, 8.8f, p);
+                    cv.drawRect(7, 11, 14, 12.3f, p);
+                    break;
                 default: // 설정 (톱니)
                     p.setStyle(Paint.Style.STROKE);
                     p.setStrokeWidth(2.6f);

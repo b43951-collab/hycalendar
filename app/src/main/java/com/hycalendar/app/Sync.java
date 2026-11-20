@@ -31,6 +31,8 @@ final class Sync {
     interface Done { void run(String err); }   // err == null 이면 성공
     interface Changed { void run(); }
 
+    static final int MAX_MEMBERS = 6;
+
     private static Context app;
     private static Changed changed;
     private static boolean started;
@@ -182,7 +184,7 @@ final class Sync {
                 @SuppressWarnings("unchecked")
                 List<String> mem = (List<String>) cd.get("members");
                 if (mem == null) { cb.run("코드를 찾을 수 없어요"); return; }
-                if (mem.size() >= 2 && !mem.contains(uid)) { cb.run("이미 두 사람이 연결된 코드예요"); return; }
+                if (mem.size() >= MAX_MEMBERS && !mem.contains(uid)) { cb.run("가족 인원이 가득 찼어요 (최대 " + MAX_MEMBERS + "명)"); return; }
                 WriteBatch b = db().batch();
                 b.update(db().collection("couples").document(cid), "members", FieldValue.arrayUnion(uid));
                 Map<String, Object> um = new HashMap<>();
@@ -211,7 +213,11 @@ final class Sync {
                 String code = snap.getString("code");
                 if (code != null) Store.putS("code", code);
                 String me = uid(), pt = "";
-                if (mem != null) for (String m : mem) if (!m.equals(me)) pt = m;
+                if (mem != null) {
+                    Store.putI("mcount", mem.size());
+                    int mi = mem.indexOf(me);   // 먼저 들어온 두 명이 부부, 이후 구성원은 가족
+                    if (mi >= 0 && mi < 2 && mem.size() >= 2) pt = mem.get(1 - mi);
+                }
                 if (!pt.equals(partner())) {
                     Store.putS("partner", pt);
                     watchPartner(pt);
@@ -237,6 +243,7 @@ final class Sync {
                     if (dc.getType() == DocumentChange.Type.REMOVED) { Store.removeRemoteUse(d.getId()); continue; }
                     try {
                         String owner = d.getString("o");
+                        if (!me.equals(owner) && (owner == null || !owner.equals(partner()))) continue;
                         Store.applyRemoteUse(d.getId(), d.getString("k"), LocalDate.parse(d.getString("d")), me.equals(owner) ? 0 : 1);
                     } catch (Exception ignored) { }
                 }
@@ -248,6 +255,7 @@ final class Sync {
                 for (DocumentChange dc : qs.getDocumentChanges()) {
                     DocumentSnapshot d = dc.getDocument();
                     if (dc.getType() == DocumentChange.Type.REMOVED || d.getData() == null) continue;
+                    if (!d.getId().equals(me) && !d.getId().equals(partner())) continue;
                     String prefix = d.getId().equals(me) ? "bal_" : "mbal_";
                     for (Map.Entry<String, Object> en : d.getData().entrySet()) {
                         if (en.getValue() instanceof Number) Store.putBalLocal(prefix + en.getKey(), ((Number) en.getValue()).floatValue());
@@ -286,7 +294,7 @@ final class Sync {
         final String me = uid(), pt = partner();
         if (!cid().equals(Store.getS("synced_cid", ""))) {
             Store.putS("synced_cid", cid());
-            for (Memos.Memo m : Memos.all()) if (m.shared) pushMemo(m);
+            for (Memos.Memo m : Memos.all()) if (m.shared || m.family) { if (m.owner.isEmpty()) Memos.save(m); else pushMemo(m); }
             for (Store.Use u : Store.allUses()) if (u.who == 0) pushUse(u);
             Map<String, Object> bal = new HashMap<>();
             for (Map.Entry<String, ?> en : Store.prefs().getAll().entrySet()) {
@@ -345,11 +353,97 @@ final class Sync {
         } catch (Throwable ignored) { }
     }
 
+    // ---------- 공유 범위 / 표시 이름 ----------
+    /** 서버에서 받은 메모를 이 기기에서 볼 수 있는지 */
+    static boolean canSee(String owner, boolean toSpouse, boolean toFamily) {
+        String me = uid();
+        if (owner == null || owner.isEmpty() || owner.equals(me)) return true;
+        if (toFamily) return true;
+        return toSpouse && owner.equals(partner());
+    }
+
+    static String displayName() {
+        String n = Store.getS("dname", "");
+        if (!n.isEmpty()) return n;
+        String e = Store.getS("email", "");
+        int at = e.indexOf('@');
+        return at > 0 ? e.substring(0, at) : "나";
+    }
+
+    // ---------- 게시판 ----------
+    static final class Post {
+        String id = "", o = "", n = "", t = "";
+        long ts;
+        List<String> ph = new ArrayList<>();
+    }
+
+    interface PostsCb { void run(List<Post> posts); }
+
+    /** 게시글을 실시간으로 받는다. 반환값을 실행하면 구독이 끝난다. */
+    static Runnable listenPosts(PostsCb cb) {
+        try {
+            if (!active()) return () -> { };
+            final ListenerRegistration r = couple().collection("posts")
+                    .orderBy("ts", com.google.firebase.firestore.Query.Direction.DESCENDING).limit(100)
+                    .addSnapshotListener((qs, e) -> {
+                        if (e != null || qs == null) return;
+                        List<Post> l = new ArrayList<>();
+                        for (DocumentSnapshot d : qs.getDocuments()) {
+                            Post p = new Post();
+                            p.id = d.getId();
+                            p.o = String.valueOf(d.getString("o") == null ? "" : d.getString("o"));
+                            p.n = d.getString("n") == null ? "" : d.getString("n");
+                            p.t = d.getString("t") == null ? "" : d.getString("t");
+                            Long ts = d.getLong("ts");
+                            p.ts = ts == null ? 0 : ts;
+                            @SuppressWarnings("unchecked")
+                            List<String> ph = (List<String>) d.get("ph");
+                            if (ph != null) p.ph = ph;
+                            l.add(p);
+                        }
+                        cb.run(l);
+                    });
+            return r::remove;
+        } catch (Throwable t) { return () -> { }; }
+    }
+
+    static void addPost(String text, List<String> photos, Done cb) {
+        try {
+            if (!active()) { cb.run("서버에 연결돼 있지 않아요"); return; }
+            Map<String, Object> d = new HashMap<>();
+            d.put("o", uid());
+            d.put("n", displayName());
+            d.put("t", text);
+            d.put("ts", System.currentTimeMillis());
+            d.put("ph", photos);
+            couple().collection("posts").add(d)
+                    .addOnSuccessListener(r -> cb.run(null))
+                    .addOnFailureListener(e -> cb.run(errText(e)));
+        } catch (Throwable t) { cb.run("실패했어요"); }
+    }
+
+    static void updatePost(String id, String text, Done cb) {
+        try {
+            couple().collection("posts").document(id).update("t", text)
+                    .addOnSuccessListener(r -> cb.run(null))
+                    .addOnFailureListener(e -> cb.run(errText(e)));
+        } catch (Throwable t) { cb.run("실패했어요"); }
+    }
+
+    static void deletePost(String id, Done cb) {
+        try {
+            couple().collection("posts").document(id).delete()
+                    .addOnSuccessListener(r -> cb.run(null))
+                    .addOnFailureListener(e -> cb.run(errText(e)));
+        } catch (Throwable t) { cb.run("실패했어요"); }
+    }
+
     static void pushProfile() {
         try {
             if (!loggedIn()) return;
             Map<String, Object> m = new HashMap<>();
             m.put("grp", (long) Store.getI("grp_me", 1));
+            m.put("name", displayName());
             if (!cid().isEmpty()) m.put("cid", cid());
             userDoc(uid()).set(m, SetOptions.merge());
         } catch (Throwable ignored) { }

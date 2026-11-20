@@ -28,6 +28,8 @@ final class Memos {
         int repDate;                       // 날짜에 반복: 0 없음, 1 매월, 2 매년
         boolean repLunar;                  // 날짜 반복을 음력 기준으로
         boolean shared;                    // 배우자와 공유 (기본 꺼짐)
+        boolean family;                    // 가족 전체와 공유 (기본 꺼짐)
+        String owner = "";                 // 작성자 uid (서버 공유용)
 
         boolean repeats() { return !repShift.isEmpty() || repDow != 0 || repDate != 0; }
     }
@@ -78,8 +80,9 @@ final class Memos {
     private static String newId() { return Long.toString(System.currentTimeMillis(), 36) + Integer.toString((int) (Math.random() * 100000), 36); }
 
     static synchronized void save(Memo m) {
+        if (m.owner.isEmpty()) m.owner = Sync.uid();
         upsert(m);
-        if (m.shared) Sync.pushMemo(m); else Sync.delMemo(m.id);
+        if (m.shared || m.family) Sync.pushMemo(m); else Sync.delMemo(m.id);
     }
 
     static synchronized void delete(String id) {
@@ -109,7 +112,16 @@ final class Memos {
 
     static synchronized void applyRemote(String json) {
         if (json == null) return;
-        try { upsert(fromJson(new JSONObject(json))); } catch (Exception ignored) { }
+        try {
+            Memo m = fromJson(new JSONObject(json));
+            if (Sync.canSee(m.owner, m.shared, m.family)) upsert(m); else removeLocal(m.id);
+        } catch (Exception ignored) { }
+    }
+
+    /** 내가 쓴 메모(또는 작성자 정보가 없는 예전 메모)만 고칠 수 있다 */
+    static boolean mine(Memo m) {
+        String me = Sync.uid();
+        return m.owner.isEmpty() || me.isEmpty() || m.owner.equals(me);
     }
 
     static synchronized void removeRemote(String id) { removeLocal(id); }
@@ -126,7 +138,7 @@ final class Memos {
         o.put("c2", m.color); o.put("bg2", m.bg); o.put("td", m.todo); o.put("dn", m.done); o.put("ad", m.allDay);
         o.put("s", m.start.toString()); o.put("e", m.end == null ? "" : m.end.toString());
         o.put("sm", m.sMin); o.put("em", m.eMin); o.put("n", m.notify);
-        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar); o.put("sh", m.shared);
+        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar); o.put("sh", m.shared); o.put("fm", m.family); o.put("ow", m.owner);
         return o;
     }
 
@@ -148,7 +160,7 @@ final class Memos {
         m.repShift = o.optString("rs").replace("L", ""); m.repDow = o.optInt("rd"); m.repDay = o.optInt("rdy");
         m.repDate = o.has("rdt") ? o.optInt("rdt") : (o.optBoolean("rm") ? 1 : 0);
         m.repLunar = o.optBoolean("rl");
-        m.shared = o.optBoolean("sh", false);
+        m.shared = o.optBoolean("sh", false); m.family = o.optBoolean("fm", false); m.owner = o.optString("ow", "");
         return m;
     }
 

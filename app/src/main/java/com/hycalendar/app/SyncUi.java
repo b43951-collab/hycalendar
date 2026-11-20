@@ -193,11 +193,15 @@ final class SyncUi {
             })), l1);
             row.addView(Ui.btn(a, th, "코드 입력", false, v -> codeDialog(a, th, refresh)), l2);
             c.addView(row);
-        } else if (partner.isEmpty()) {
-            TextView ex = Ui.text(a, "내 초대 코드 (배우자가 '코드 입력'에 넣어요)", 12, th.sub, false);
-            ex.setPadding(0, dp(2), 0, dp(6));
+        } else {
+            int n = Store.getI("mcount", 1);
+            String st = partner.isEmpty() ? (n > 2 ? "가족 " + n + "명 연결됨" : n == 2 ? "가족과 연결됨" : "배우자를 기다리는 중이에요")
+                    : (n > 2 ? "배우자 연결됨 · 가족 " + n + "명" : "배우자 연결됨");
+            c.addView(Ui.text(a, st, 14, th.todayStroke, true));
+            TextView ex = Ui.text(a, "초대 코드 (먼저 들어온 1명은 배우자, 그다음부터는 가족으로 연결돼요. 최대 " + Sync.MAX_MEMBERS + "명)", 12, th.sub, false);
+            ex.setPadding(0, dp(8), 0, dp(4));
             c.addView(ex);
-            TextView code = Ui.text(a, Store.getS("code", ""), 30, th.todayStroke, true);
+            TextView code = Ui.text(a, Store.getS("code", ""), 28, th.todayStroke, true);
             code.setLetterSpacing(0.2f);
             c.addView(code);
             c.addView(Ui.btn(a, th, "코드 복사", false, v -> {
@@ -205,15 +209,25 @@ final class SyncUi {
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("code", Store.getS("code", "")));
                 Toast.makeText(a, "복사했어요", Toast.LENGTH_SHORT).show();
             }));
-            TextView w = Ui.text(a, "연결을 기다리는 중이에요", 12, th.sub, false);
-            w.setPadding(0, dp(8), 0, 0);
-            c.addView(w);
-        } else {
-            c.addView(Ui.text(a, "배우자 연결됨", 14, th.todayStroke, true));
-            TextView ex = Ui.text(a, "메모·근태·잔여가 서로 실시간으로 반영돼요.", 12, th.sub, false);
-            ex.setPadding(0, dp(2), 0, 0);
-            c.addView(ex);
         }
+        TextView nl = Ui.text(a, "게시판에 보이는 이름", 12, th.sub, false);
+        nl.setPadding(0, dp(12), 0, dp(4));
+        c.addView(nl);
+        LinearLayout nr = new LinearLayout(a);
+        nr.setGravity(Gravity.CENTER_VERTICAL);
+        final EditText ne = field(a, th, "이름", false);
+        ne.setText(Sync.displayName());
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        np.setMargins(0, 0, dp(8), 0);
+        nr.addView(ne, np);
+        nr.addView(Ui.btn(a, th, "저장", false, v -> {
+            String s = ne.getText().toString().trim();
+            if (s.length() > 10) { Toast.makeText(a, "10글자 이하로 입력해 주세요", Toast.LENGTH_SHORT).show(); return; }
+            Store.putS("dname", s);
+            Sync.pushProfile();
+            Toast.makeText(a, "저장했어요", Toast.LENGTH_SHORT).show();
+        }));
+        c.addView(nr);
         TextView out = Ui.btn(a, th, "로그아웃", false, v -> new android.app.AlertDialog.Builder(a)
                 .setTitle("로그아웃")
                 .setMessage("로그아웃하면 이 폰은 서버와 연결이 끊겨요. 폰에 있는 데이터는 그대로 남아요.")

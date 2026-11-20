@@ -159,7 +159,7 @@ final class DayUi {
             box.addView(e);
         }
         for (Memos.Memo m : list) {
-            box.addView(memoRow(m, true, v -> new android.app.AlertDialog.Builder(act)
+            box.addView(memoRow(m, true, v -> { if (!Memos.mine(m)) { toast("작성자만 삭제할 수 있어요"); return; } new android.app.AlertDialog.Builder(act)
                     .setTitle("메모 삭제")
                     .setMessage("이 메모를 삭제할까요?\n" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text))
                     .setPositiveButton("삭제", (x, w) -> {
@@ -167,7 +167,7 @@ final class DayUi {
                         Alarms.schedule(act);
                         changed.run();
                         render();
-                    }).setNegativeButton("취소", null).show()));
+                    }).setNegativeButton("취소", null).show(); }));
         }
     }
 
@@ -282,9 +282,11 @@ final class DayUi {
 
     private boolean leaveShare = true;
 
-    private View shareBox(boolean cur, Ui.BoolCb cb) {
+    private View shareBox(boolean cur, Ui.BoolCb cb) { return shareBox("공유", cur, cb); }
+
+    private View shareBox(String label, boolean cur, Ui.BoolCb cb) {
         android.widget.CheckBox cbx = new android.widget.CheckBox(act);
-        cbx.setText("공유");
+        cbx.setText(label);
         cbx.setTextSize(14);
         cbx.setTextColor(th.sub);
         cbx.setChecked(cur);
@@ -340,7 +342,7 @@ final class DayUi {
             box.addView(e);
         }
         for (Memos.Memo m : all) {
-            View r = memoRow(m, false, v -> new android.app.AlertDialog.Builder(act)
+            View r = memoRow(m, false, v -> { if (!Memos.mine(m)) { toast("작성자만 삭제할 수 있어요"); return; } new android.app.AlertDialog.Builder(act)
                     .setTitle("메모 삭제")
                     .setMessage("이 메모를 삭제할까요?\n" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text))
                     .setPositiveButton("삭제", (x, w) -> {
@@ -349,7 +351,7 @@ final class DayUi {
                         changed.run();
                         fillAll(dlg, box);
                         if (sheet != null && sheet.isShowing()) render();
-                    }).setNegativeButton("취소", null).show());
+                    }).setNegativeButton("취소", null).show(); });
             r.setOnClickListener(v -> { dlg.dismiss(); openEditor(m, m.start); });
             box.addView(r);
         }
@@ -389,11 +391,12 @@ final class DayUi {
 
     private void openEditor(Memos.Memo src, LocalDate defDate) {
         final boolean isNew = src == null;
+        if (!isNew && !Memos.mine(src)) { toast("작성자만 수정할 수 있어요"); return; }
         final Memos.Memo m = new Memos.Memo();
         if (isNew) {
             m.start = defDate;
         } else {
-            m.id = src.id; m.text = src.text; m.url = src.url; m.label = src.label; m.color = src.color; m.bg = src.bg; m.shared = src.shared;
+            m.id = src.id; m.text = src.text; m.url = src.url; m.label = src.label; m.color = src.color; m.bg = src.bg; m.shared = src.shared; m.family = src.family; m.owner = src.owner;
             m.todo = src.todo; m.done = src.done; m.allDay = src.allDay; m.start = src.start; m.end = src.end;
             m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.repShift = src.repShift; m.repDow = src.repDow; m.repDay = src.repDay; m.repDate = src.repDate; m.repLunar = src.repLunar;
         }
@@ -439,14 +442,22 @@ final class DayUi {
         // 내용 + 색
         LinearLayout c1 = Ui.card(act, th);
         c1.addView(txt);
+        LinearLayout shr = new LinearLayout(act);
+        shr.setGravity(Gravity.CENTER_VERTICAL);
+        shr.setPadding(0, dp(6), 0, 0);
+        shr.addView(Ui.text(act, "공유", 14, th.sub, true));
+        View cb1 = shareBox("배우자", m.shared, on -> m.shared = on);
+        View cb2 = shareBox("가족 전체", m.family, on -> m.family = on);
+        LinearLayout.LayoutParams cbp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cbp.setMargins(dp(10), 0, 0, 0);
+        shr.addView(cb1, cbp);
+        shr.addView(cb2, cbp);
+        c1.addView(shr);
         // 색: 글자색 / 배경색 한 줄
         LinearLayout cr = new LinearLayout(act);
         cr.setGravity(Gravity.CENTER_VERTICAL);
         cr.setPadding(0, dp(12), 0, dp(4));
-        cr.addView(shareBox(m.shared, on -> m.shared = on));
-        TextView colLbl = Ui.text(act, "색", 16, th.fg, false);
-        colLbl.setPadding(dp(14), 0, 0, 0);
-        cr.addView(colLbl, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        cr.addView(Ui.text(act, "색", 16, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         TextView ta = Ui.text(act, "글자", 14, th.sub, true);
         ta.setPaintFlags(ta.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
         cr.addView(ta);

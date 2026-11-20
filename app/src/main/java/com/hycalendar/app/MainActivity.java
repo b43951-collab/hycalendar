@@ -53,6 +53,7 @@ public class MainActivity extends Activity {
     private CalView cal;
     private DayUi dayUi;
     private AlarmUi alarmUi;
+    private BoardUi boardUi;
     private ScrollView settingsScroll;
     private int pendingScroll = 0;
 
@@ -96,9 +97,15 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle o) {
         super.onSaveInstanceState(o);
         o.putInt("tab", tab);
-        o.putInt("scroll", settingsScroll != null && tab == 4 ? settingsScroll.getScrollY() : 0);
+        o.putInt("scroll", settingsScroll != null && tab == 5 ? settingsScroll.getScrollY() : 0);
         o.putInt("ymY", ym.getYear());
         o.putInt("ymM", ym.getMonthValue());
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (boardUi != null) boardUi.stop();
     }
 
     @Override
@@ -137,6 +144,7 @@ public class MainActivity extends Activity {
         th = Theme.get(Store.getS("theme", "auto"), Opts.systemDark(this));
         dayUi = new DayUi(this, th, this::dataChanged);
         alarmUi = new AlarmUi(this, th, () -> showTab(3));
+        boardUi = new BoardUi(this, th);
         getWindow().setStatusBarColor(th.bg);
         getWindow().setNavigationBarColor(th.bg);
         int flags = getWindow().getDecorView().getSystemUiVisibility();
@@ -184,8 +192,8 @@ public class MainActivity extends Activity {
         tabbar = new LinearLayout(this);
         tabbar.setOrientation(LinearLayout.HORIZONTAL);
         tabbar.setBackgroundColor(th.bg);
-        String[] names = {"달력", "근무표", "근태", "알람", "설정"};
-        int[] icons = {0, 1, 5, 3, 4};
+        String[] names = {"달력", "근무표", "근태", "알람", "게시판", "설정"};
+        int[] icons = {0, 1, 5, 3, 6, 4};
         for (int i = 0; i < names.length; i++) {
             final int ix = i;
             LinearLayout cell = new LinearLayout(this);
@@ -216,9 +224,10 @@ public class MainActivity extends Activity {
 
     private void showTab(int i) {
         tab = i;
+        if (boardUi != null && i != 4) boardUi.stop();
         content.removeAllViews();
         cal = null;
-        for (int k = 0; k < 5; k++) {
+        for (int k = 0; k < 6; k++) {
             View cell = tabbar.findViewWithTag("tab" + k);
             if (cell == null) continue;
             boolean on = k == i;
@@ -248,7 +257,7 @@ public class MainActivity extends Activity {
         } else {
             header.setVisibility(View.GONE);
             content.setBackgroundColor(th.page);
-            content.addView(i == 2 ? buildLeave() : i == 3 ? buildAlarm() : buildSettings());
+            content.addView(i == 2 ? buildLeave() : i == 3 ? buildAlarm() : i == 4 ? boardUi.build() : buildSettings());
         }
     }
 
@@ -261,7 +270,7 @@ public class MainActivity extends Activity {
     }
 
     private void refreshSettings() {
-        if (settingsScroll != null && tab == 4) pendingScroll = settingsScroll.getScrollY();
+        if (settingsScroll != null && tab == 5) pendingScroll = settingsScroll.getScrollY();
         showTab(tab);
     }
 
@@ -527,6 +536,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == BoardUi.REQ_PHOTO) { if (res == RESULT_OK && boardUi != null) boardUi.onPhotos(data); return; }
         if (req == AlarmUi.REQ_SOUND) { if (res == RESULT_OK && alarmUi != null) alarmUi.onSound(data); return; }
         if (res != RESULT_OK || data == null || data.getData() == null) return;
         Uri u = data.getData();
