@@ -362,6 +362,13 @@ final class Renderer {
             LeaveCore.Type t = LeaveCore.type(u.key);
             if (t != null && !t.off) items.add(new Line(t.label, th.orange));  // 하루 휴무 종류는 근무 자리 표시만, 메모줄엔 안 나옴
         }
+        // 배우자의 시간단위 근태: 내 근태 다음, 일반 메모보다 위
+        if (o.mode != FOUR) {
+            for (Store.Use u : Store.usesOn(date, 1)) {
+                LeaveCore.Type t = LeaveCore.type(u.key);
+                if (t != null && !t.off) items.add(new Line("배) " + t.label, th.orange));
+            }
+        }
         for (Memos.Memo mm : Memos.forDate(date)) {
             int col = mm.color != 0 ? mm.color : th.fg;
             for (String s : mm.text.split("\n")) if (!s.trim().isEmpty()) items.add(new Line(s.trim(), col, mm.bg));
