@@ -335,6 +335,19 @@ final class Renderer {
             char type = ShiftCore.typeFor(rd[0], date);
             boolean leaveOff = rd[1] == 1 ? off : rd[1] == 2 && moff;
             int ring = o.mode != SINGLE ? (rd[1] == 1 ? th.meRing : rd[1] == 2 ? th.mateRing : 0) : 0;
+            if (o.mode == SINGLE && moff) {
+                // 배우자가 근태(종일 휴무)를 등록한 날: 왼쪽에 배우자 근태, 오른쪽에 내 근태/근무를 조금 작게
+                float left = cx + pad, right = cx + cw - pad, mid = cursor + chipH / 2f;
+                float ph = chipH * 0.78f;
+                drawPill(c, p, th, left, mid, ph, (right - left) * 0.52f, LeaveCore.label2(moffLabel), th.mateRing, false);
+                float sh = chipH * 0.8f;
+                if (leaveOff) {
+                    drawPill(c, p, th, right, mid, ph * 0.8f, (right - left) * 0.48f, LeaveCore.label2(offLabel), th.meRing, true);
+                } else {
+                    float mw = Math.min((right - left) * 0.48f, o.shape == 0 ? sh : sh * 1.5f);
+                    drawChip(c, p, th, right - mw / 2f, cursor + (chipH - sh) / 2f, sh, mw, type, false, "", 0, o.shape);
+                }
+            } else
             drawChip(c, p, th, cx + cw / 2, cursor, chipH, cw - 2 * pad, type, leaveOff, rd[1] == 2 ? moffLabel : offLabel, ring, o.shape);
             cursor += chipH + rowGap;
         }
@@ -376,6 +389,33 @@ final class Renderer {
             p.setColor(cols.get(i));
             c.drawText(s, tx, cursor + (i + 1) * lineH - memoSz * 0.25f, p);
         }
+    }
+
+    /** 두 글자 근태 알약. 왼쪽 정렬(alignRight=false) 또는 오른쪽 정렬. ring은 테두리 색(구분용) */
+    private static void drawPill(Canvas c, Paint p, Theme th, float edge, float cy, float ph, float maxW,
+                                 String label, int ring, boolean alignRight) {
+        float pw = Math.min(maxW, ph * 1.55f);
+        float l = alignRight ? edge - pw : edge;
+        RectF rc = new RectF(l, cy - ph / 2, l + pw, cy + ph / 2);
+        p.setStyle(Paint.Style.FILL);
+        p.setTypeface(Typeface.DEFAULT_BOLD);
+        p.setTextAlign(Paint.Align.CENTER);
+        p.setColor(th.orange);
+        c.drawRoundRect(rc, ph / 2, ph / 2, p);
+        p.setColor(0xFFFFFFFF);
+        float sz = ph * 0.56f;
+        p.setTextSize(sz);
+        float wd = p.measureText(label);
+        if (wd > pw * 0.86f) { sz = sz * pw * 0.86f / wd; p.setTextSize(sz); }
+        c.drawText(label, rc.centerX(), cy + sz * 0.35f, p);
+        if (ring != 0) {
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(2f, ph * 0.09f));
+            p.setColor(ring);
+            c.drawRoundRect(rc, ph / 2, ph / 2, p);
+            p.setStyle(Paint.Style.FILL);
+        }
+        p.setTypeface(Typeface.DEFAULT);
     }
 
     private static void drawChip(Canvas c, Paint p, Theme th, float mx, float top, float h, float maxW,

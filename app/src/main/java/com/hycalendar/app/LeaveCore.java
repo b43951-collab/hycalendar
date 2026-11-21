@@ -88,6 +88,19 @@ public final class LeaveCore {
     }
 
     /** 하루 휴무 알약에 표시할 문구: 해당 근태명 */
+    /** 달력 칸에서 쓰는 두 글자 줄임말 (예: 장기근속 → 장근) */
+    public static String label2(String full) {
+        switch (full) {
+            case "야간케어": return "야케";
+            case "교대케어": return "교케";
+            case "1일교육": return "교육";
+            case "장기근속": return "장근";
+            case "경조휴가": return "경휴";
+            case "기타휴가": return "기휴";
+            default: return full.length() > 2 ? full.substring(0, 2) : full;
+        }
+    }
+
     public static String offLabel(List<String> keys) {
         for (String k : keys) {
             Type t = type(k);
