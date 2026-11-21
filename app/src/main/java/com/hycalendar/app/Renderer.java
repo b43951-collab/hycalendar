@@ -43,7 +43,7 @@ final class Renderer {
         return g;
     }
 
-    private static final class Line { String t; int color, bg; Line(String t, int c) { this.t = t; this.color = c; } Line(String t, int c, int bg) { this.t = t; this.color = c; this.bg = bg; } }
+    private static final class Line { String t; int color, bg; boolean fit; Line(String t, int c) { this.t = t; this.color = c; } Line(String t, int c, int bg) { this.t = t; this.color = c; this.bg = bg; } }
 
     // ===== 부부 / 4개조: 주 단위 표 (날짜 줄 + 조별 줄) =====
     private static final class GL {
@@ -360,13 +360,13 @@ final class Renderer {
         List<Line> items = new ArrayList<>();
         for (Store.Use u : uses) {
             LeaveCore.Type t = LeaveCore.type(u.key);
-            if (t != null && !t.off) items.add(new Line(t.label, th.orange));  // 하루 휴무 종류는 근무 자리 표시만, 메모줄엔 안 나옴
+            if (t != null && !t.off) { Line ln = new Line(t.label.replace(" ", ""), th.orange); ln.fit = true; items.add(ln); }  // 하루 휴무 종류는 근무 자리 표시만, 메모줄엔 안 나옴
         }
         // 배우자의 시간단위 근태: 내 근태 다음, 일반 메모보다 위
         if (o.mode != FOUR) {
             for (Store.Use u : Store.usesOn(date, 1)) {
                 LeaveCore.Type t = LeaveCore.type(u.key);
-                if (t != null && !t.off) items.add(new Line("배) " + t.label, th.orange));
+                if (t != null && !t.off) { Line ln = new Line("배)" + t.label.replace(" ", ""), th.orange); ln.fit = true; items.add(ln); }
             }
         }
         for (Memos.Memo mm : Memos.forDate(date)) {
@@ -381,8 +381,15 @@ final class Renderer {
         List<String> texts = new ArrayList<>();
         List<Integer> cols = new ArrayList<>();
         List<Integer> bgs = new ArrayList<>();
+        List<Float> scs = new ArrayList<>();
         for (Line ln : items) {
-            for (String piece : wrap(p, ln.t, maxW)) { texts.add(piece); cols.add(ln.color); bgs.add(ln.bg); }
+            if (ln.fit) {   // 근태 줄은 줄바꿈 없이 한 줄, 넘치면 글자를 줄여 맞춤
+                float wd = p.measureText(ln.t);
+                texts.add(ln.t); cols.add(ln.color); bgs.add(ln.bg);
+                scs.add(wd > maxW && wd > 0 ? maxW / wd : 1f);
+                continue;
+            }
+            for (String piece : wrap(p, ln.t, maxW)) { texts.add(piece); cols.add(ln.color); bgs.add(ln.bg); scs.add(1f); }
         }
         float tx = ws ? cx + cw / 2 : cx + pad;
         for (int i = 0; i < texts.size() && i < maxLines; i++) {
@@ -394,7 +401,9 @@ final class Renderer {
                 c.drawRect(cx + 1, cursor + i * lineH, cx + cw - 1, cursor + (i + 1) * lineH, p);
             }
             p.setColor(cols.get(i));
+            p.setTextSize(memoSz * scs.get(i));
             c.drawText(s, tx, cursor + (i + 1) * lineH - memoSz * 0.25f, p);
+            p.setTextSize(memoSz);
         }
     }
 
