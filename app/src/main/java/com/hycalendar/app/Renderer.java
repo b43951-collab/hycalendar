@@ -336,16 +336,16 @@ final class Renderer {
             boolean leaveOff = rd[1] == 1 ? off : rd[1] == 2 && moff;
             int ring = o.mode != SINGLE ? (rd[1] == 1 ? th.meRing : rd[1] == 2 ? th.mateRing : 0) : 0;
             if (o.mode == SINGLE && moff) {
-                // 배우자가 근태(종일 휴무)를 등록한 날: 왼쪽에 배우자 근태, 오른쪽에 내 근태/근무를 조금 작게
+                // 배우자가 근태(종일 휴무)를 등록한 날: 왼쪽에 내 근태/근무(조금 작게), 오른쪽에 배우자 근태
                 float left = cx + pad, right = cx + cw - pad, mid = cursor + chipH / 2f;
                 float ph = chipH * 0.78f;
-                drawPill(c, p, th, left, mid, ph, (right - left) * 0.52f, LeaveCore.label2(moffLabel), th.mateRing, false);
+                drawPill(c, p, th, right, mid, ph, (right - left) * 0.52f, LeaveCore.label2(moffLabel), th.mateRing, true);
                 float sh = chipH * 0.8f;
                 if (leaveOff) {
-                    drawPill(c, p, th, right, mid, ph * 0.8f, (right - left) * 0.48f, LeaveCore.label2(offLabel), th.meRing, true);
+                    drawPill(c, p, th, left, mid, ph * 0.8f, (right - left) * 0.48f, LeaveCore.label2(offLabel), th.meRing, false);
                 } else {
                     float mw = Math.min((right - left) * 0.48f, o.shape == 0 ? sh : sh * 1.5f);
-                    drawChip(c, p, th, right - mw / 2f, cursor + (chipH - sh) / 2f, sh, mw, type, false, "", 0, o.shape);
+                    drawChip(c, p, th, left + mw / 2f, cursor + (chipH - sh) / 2f, sh, mw, type, false, "", 0, o.shape);
                 }
             } else
             drawChip(c, p, th, cx + cw / 2, cursor, chipH, cw - 2 * pad, type, leaveOff, rd[1] == 2 ? moffLabel : offLabel, ring, o.shape);
