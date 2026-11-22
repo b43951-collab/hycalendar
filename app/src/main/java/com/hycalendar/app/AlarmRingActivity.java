@@ -15,6 +15,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -86,6 +87,12 @@ public class AlarmRingActivity extends Activity {
         root.setPadding(Ui.dp(24), Ui.dp(40), Ui.dp(24), Ui.dp(40));
 
         root.addView(spacer(1));
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.ic_mark);
+        logo.setAdjustViewBounds(true);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(Ui.dp(84), Ui.dp(84));
+        llp.setMargins(0, 0, 0, Ui.dp(22));
+        root.addView(logo, llp);
         ampm = Ui.text(this, "", 44, FG, true);
         ampm.setGravity(Gravity.CENTER);
         root.addView(ampm, wrap());
