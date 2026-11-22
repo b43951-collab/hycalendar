@@ -125,7 +125,7 @@ final class AlarmUi {
 
         // 권한 점검 안내: 알람이 제대로 울리려면 필요한 권한이 빠져 있으면 보여 준다
         try {
-            if (!Perms.allOk(act)) {
+            if (Perms.essentialMissing(act)) {
                 LinearLayout bn = new LinearLayout(act);
                 bn.setGravity(Gravity.CENTER_VERTICAL);
                 bn.setPadding(dp(14), dp(10), dp(14), dp(10));
