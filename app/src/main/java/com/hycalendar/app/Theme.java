@@ -66,7 +66,7 @@ final class Theme {
     /** 나/배우자 줄 배경색 (idx: PALETTE 번호, 0이면 없음) */
     static int tint(Theme t, int idx) {
         if (idx < 0 || idx >= PALETTE.length || PALETTE[idx] == 0) return 0;
-        return blend(t.bg, PALETTE[idx], t.dark ? 0.24f : 0.16f);
+        return blend(t.bg, PALETTE[idx], t.dark ? 0.15f : 0.10f);
     }
 
     static int blend(int a, int b, float t) {
