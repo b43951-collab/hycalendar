@@ -112,7 +112,7 @@ final class Renderer {
                 p.setStyle(Paint.Style.FILL);
                 p.setTextAlign(Paint.Align.CENTER);
                 p.setTypeface(Typeface.DEFAULT);
-                p.setColor(th.fg);
+                p.setColor(tint != 0 ? 0xFF222222 : th.fg);   // 고정 배경색 위 글자는 항상 어둡게
                 String lab = o.mode == COUPLE ? (r == 0 ? "나" : "배우자") : (grp == 5 ? "통상" : grp + "조");
                 p.setTextSize(Math.min(g.rowH * 0.4f, g.labelW * (lab.length() > 2 ? 0.34f : 0.46f)));
                 c.drawText(lab, g.labelW / 2, ry + g.rowH * 0.5f + p.getTextSize() * 0.35f, p);
