@@ -76,6 +76,8 @@ final class Perms {
         f.title = "잠금 화면에서 알람 화면 표시";
         f.why = "화면이 꺼져 있어도 알람 화면이 켜지면서 울려요";
         f.ok = Build.VERSION.SDK_INT < 34 || (nm != null && nm.canUseFullScreenIntent());
+        // '다른 앱 위에 표시'가 허용돼 있으면 알람 화면이 그걸로 뜨므로, 이 항목이 비어 있어도 매번 묻지 않는다
+        f.essential = !Settings.canDrawOverlays(a);
         f.fix = () -> open(a, new Intent("android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT", pkg(a)), new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg(a)));
         l.add(f);
 
