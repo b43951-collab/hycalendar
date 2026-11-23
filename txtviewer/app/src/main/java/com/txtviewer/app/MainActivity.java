@@ -62,13 +62,13 @@ public class MainActivity extends Activity {
     private static final int REQ_OPEN = 1, REQ_TREE = 2;
     private static final int MAX_BYTES = 30 * 1024 * 1024;
 
-    // 순백/순흑을 피하고 명암비 약 10~14:1(WCAG AAA 7:1 이상)을 유지한 테마들
-    private static final String[] T_NAME = {"종이 회백", "크림", "연회색", "세피아",
-            "소프트 다크", "따뜻한 다크", "네이비 다크", "저조도 다크"};
-    private static final int[] T_BG = {0xFFF2F2EE, 0xFFF5EEDC, 0xFFE3E3E0, 0xFFEBDDBE,
-            0xFF1C1C1E, 0xFF211D1A, 0xFF172033, 0xFF0E0E0E};
-    private static final int[] T_FG = {0xFF222222, 0xFF2E2A24, 0xFF1F1F1F, 0xFF3A2F22,
-            0xFFD0D0D0, 0xFFD6CBB8, 0xFFC5D0E0, 0xFFB8B8B8};
+    // 0·1번은 추천 2종(회사 낮 / 취침 전), 나머지는 기타 테마. 순백/순흑을 피하고 명암비 약 10~12:1 유지
+    private static final String[] T_NAME = {"회사 (밝은 곳)", "취침 전 (불 끄고)", "종이 회백", "크림",
+            "세피아", "소프트 다크", "네이비 다크", "저조도 다크"};
+    private static final int[] T_BG = {0xFFDCDCD7, 0xFF14110F, 0xFFF2F2EE, 0xFFF5EEDC,
+            0xFFEBDDBE, 0xFF1C1C1E, 0xFF172033, 0xFF0E0E0E};
+    private static final int[] T_FG = {0xFF1E1E1E, 0xFFC4B8A4, 0xFF222222, 0xFF2E2A24,
+            0xFF3A2F22, 0xFFD0D0D0, 0xFFC5D0E0, 0xFFB8B8B8};
     private static final String[] FONT_NAME = {"기본", "명조(세리프)", "고정폭"};
 
     private interface IntCb { void on(int v); }
@@ -248,6 +248,10 @@ public class MainActivity extends Activity {
     // ───────────────────────── 설정 저장 ─────────────────────────
     private void loadPrefs() {
         theme = sp.getInt("theme", 0);
+        if (sp.getInt("tver", 0) < 2) {   // 테마 목록이 바뀌어 번호가 달라졌으므로 한 번 초기화
+            if (theme >= 0) theme = 0;
+            sp.edit().putInt("tver", 2).putInt("theme", theme).apply();
+        }
         customBg = sp.getInt("cbg", T_BG[0]);
         customFg = sp.getInt("cfg", T_FG[0]);
         sizeSp = sp.getFloat("size", 18f);
@@ -863,6 +867,24 @@ public class MainActivity extends Activity {
 
     private static String fmt(int v, int div) { return div == 1 ? String.valueOf(v) : String.valueOf(v / (float) div); }
 
+    private Button themeButton(final int idx, String label, int hDp, boolean addToBody) {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(label);
+        b.setTextColor(T_FG[idx]);
+        b.setTextSize(addToBody ? 15 : 13);
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(T_BG[idx]);
+        gd.setCornerRadius(dp(8));
+        gd.setStroke(theme == idx ? dp(3) : dp(1), theme == idx ? 0xFF4C9AFF : 0xFF666666);
+        b.setBackground(gd);
+        b.setOnClickListener(v -> { theme = idx; savePrefs(); fillSettings(); });
+        LinearLayout.LayoutParams lp = addToBody ? new LinearLayout.LayoutParams(-1, dp(hDp)) : new LinearLayout.LayoutParams(0, dp(hDp), 1f);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        if (addToBody) settingsBody.addView(b, lp); else b.setLayoutParams(lp);
+        return b;
+    }
+
     /** 색 견본(현재 색) + 항상 읽히는 일반 버튼 */
     private void colorEntry(LinearLayout row, String name, int color, boolean isBg) {
         View sw = new View(this);
@@ -893,26 +915,16 @@ public class MainActivity extends Activity {
         settingsBody.addView(open, new LinearLayout.LayoutParams(-1, -2));
         if (!curName.isEmpty()) settingsBody.addView(label("현재: " + curName + " (" + curCharset + ")", 12, 0xFFAAAAAA));
 
-        section("테마 (눈의 피로를 줄인 색 조합)");
-        for (int i = 0; i < T_NAME.length; i += 2) {
+        section("추천 테마");
+        themeButton(0, "회사 · 밝은 곳\n가나다 ABC", 84, true);
+        themeButton(1, "취침 전 · 불 끄고 누워서\n가나다 ABC", 84, true);
+
+        section("다른 테마");
+        for (int i = 2; i < T_NAME.length; i += 2) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             for (int j = i; j < Math.min(i + 2, T_NAME.length); j++) {
-                final int idx = j;
-                Button b = new Button(this);
-                b.setAllCaps(false);
-                b.setText(T_NAME[j] + "\n가나다 ABC");
-                b.setTextColor(T_FG[j]);
-                b.setTextSize(13);
-                GradientDrawable gd = new GradientDrawable();
-                gd.setColor(T_BG[j]);
-                gd.setCornerRadius(dp(8));
-                gd.setStroke(theme == j ? dp(3) : dp(1), theme == j ? 0xFF4C9AFF : 0xFF666666);
-                b.setBackground(gd);
-                b.setOnClickListener(v -> { theme = idx; savePrefs(); fillSettings(); });
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(72), 1f);
-                lp.setMargins(dp(3), dp(3), dp(3), dp(3));
-                row.addView(b, lp);
+                row.addView(themeButton(j, T_NAME[j] + "\n가나다 ABC", 72, false));
             }
             settingsBody.addView(row, new LinearLayout.LayoutParams(-1, -2));
         }
