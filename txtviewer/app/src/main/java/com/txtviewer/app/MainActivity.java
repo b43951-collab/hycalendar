@@ -863,6 +863,25 @@ public class MainActivity extends Activity {
 
     private static String fmt(int v, int div) { return div == 1 ? String.valueOf(v) : String.valueOf(v / (float) div); }
 
+    /** 색 견본(현재 색) + 항상 읽히는 일반 버튼 */
+    private void colorEntry(LinearLayout row, String name, int color, boolean isBg) {
+        View sw = new View(this);
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(color);
+        g.setCornerRadius(dp(6));
+        g.setStroke(dp(2), 0xFFBBBBBB);
+        sw.setBackground(g);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(40), dp(40));
+        sl.leftMargin = dp(4);
+        row.addView(sw, sl);
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(name + "\n" + String.format("#%06X", color & 0xFFFFFF));
+        b.setTextSize(13);
+        b.setOnClickListener(v -> pickColor(isBg));
+        row.addView(b, new LinearLayout.LayoutParams(0, -2, 1f));
+    }
+
     private void fillSettings() {
         int scroll = settingsScroll.getScrollY();
         settingsBody.removeAllViews();
@@ -901,16 +920,9 @@ public class MainActivity extends Activity {
         section("직접 설정" + (theme < 0 ? "  (사용 중)" : ""));
         LinearLayout cr = new LinearLayout(this);
         cr.setOrientation(LinearLayout.HORIZONTAL);
-        Button bb = new Button(this);
-        bb.setText("배경색 ■");
-        bb.setTextColor(bgColor());
-        bb.setOnClickListener(v -> pickColor(true));
-        Button fb = new Button(this);
-        fb.setText("글자색 ■");
-        fb.setTextColor(fgColor());
-        fb.setOnClickListener(v -> pickColor(false));
-        cr.addView(bb, new LinearLayout.LayoutParams(0, -2, 1f));
-        cr.addView(fb, new LinearLayout.LayoutParams(0, -2, 1f));
+        cr.setGravity(Gravity.CENTER_VERTICAL);
+        colorEntry(cr, "배경색", bgColor(), true);
+        colorEntry(cr, "글자색", fgColor(), false);
         settingsBody.addView(cr, new LinearLayout.LayoutParams(-1, -2));
 
         section("글자");
