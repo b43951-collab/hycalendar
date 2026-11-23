@@ -14,6 +14,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
 import android.text.Editable;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.BackgroundColorSpan;
+import android.text.style.ForegroundColorSpan;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.provider.DocumentsContract;
+import android.database.Cursor;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -45,19 +53,22 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final int REQ_OPEN = 1;
+    private static final int REQ_OPEN = 1, REQ_TREE = 2;
     private static final int MAX_BYTES = 30 * 1024 * 1024;
 
-    // 눈의 피로를 줄이도록 순백/순흑을 피하고 대비를 낮춘 테마들
-    private static final String[] T_NAME = {"종이(세피아)", "크림", "눈 보호 녹색", "차분한 회색",
-            "소프트 다크", "야간 세피아", "딥 블루 나이트", "저대비 다크"};
-    private static final int[] T_BG = {0xFFF4ECD8, 0xFFFAF6EA, 0xFFCCE8CF, 0xFFE4E4E0,
-            0xFF1E1E1E, 0xFF2B2420, 0xFF1A2230, 0xFF121212};
-    private static final int[] T_FG = {0xFF3B3228, 0xFF2B2B2B, 0xFF2E3B2F, 0xFF2A2A2A,
-            0xFFC8C8C8, 0xFFCDBFA8, 0xFFB8C4D6, 0xFF9A9A9A};
+    // 순백/순흑을 피하고 명암비 약 10~14:1(WCAG AAA 7:1 이상)을 유지한 테마들
+    private static final String[] T_NAME = {"종이 회백", "크림", "연회색", "세피아",
+            "소프트 다크", "따뜻한 다크", "네이비 다크", "저조도 다크"};
+    private static final int[] T_BG = {0xFFF2F2EE, 0xFFF5EEDC, 0xFFE3E3E0, 0xFFEBDDBE,
+            0xFF1C1C1E, 0xFF211D1A, 0xFF172033, 0xFF0E0E0E};
+    private static final int[] T_FG = {0xFF222222, 0xFF2E2A24, 0xFF1F1F1F, 0xFF3A2F22,
+            0xFFD0D0D0, 0xFFD6CBB8, 0xFFC5D0E0, 0xFFB8B8B8};
     private static final String[] FONT_NAME = {"기본", "명조(세리프)", "고정폭"};
 
     private interface IntCb { void on(int v); }
@@ -92,14 +103,27 @@ public class MainActivity extends Activity {
     private TextView titleTv, infoTv;
     private SeekBar seek;
     private boolean seeking;
-    private ScrollView settingsPanel;
-    private LinearLayout settingsBody;
+    private LinearLayout settingsPanel, settingsBody;
+    private ScrollView settingsScroll;
+    private LinearLayout searchBar, quickCard;
+    private FrameLayout quickPanel;
+    private EditText searchEt;
+    private TextView searchInfo;
+    private Button nextBtn;
+    private String searchQ = "";
+    private int lastHit = -1;
+    private String lower;
+    private int lastPW = 0, lastPH = 0;
+    private int[] snapI;
+    private float snapSize;
     private FrameLayout pickerPanel;
     private boolean menuVisible;
     private Runnable pendingTap;
 
     private final Runnable repRun = () -> {
         if (text.isEmpty() || pv.getWidth() == 0 || pv.getHeight() == 0) return;
+        if (searchBar.getVisibility() == View.VISIBLE || pickerPanel.getVisibility() == View.VISIBLE) return;
+        if (pv.getWidth() == lastPW && pv.getHeight() == lastPH) return;
         repaginate();
     };
 
@@ -111,6 +135,7 @@ public class MainActivity extends Activity {
         installCrashLog();
         loadPrefs();
         build();
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         goImmersive();
         showLastCrash();
         if (!handleIntent(getIntent())) {
@@ -146,14 +171,16 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (pickerPanel.getVisibility() == View.VISIBLE) { pickerPanel.setVisibility(View.GONE); return; }
-        if (settingsPanel.getVisibility() == View.VISIBLE) { closeSettings(); return; }
+        if (settingsPanel.getVisibility() == View.VISIBLE) { closeSettings(true); return; }
+        if (quickPanel.getVisibility() == View.VISIBLE) { quickPanel.setVisibility(View.GONE); return; }
+        if (searchBar.getVisibility() == View.VISIBLE) { closeSearch(); return; }
         if (menuVisible) { setMenu(false); return; }
         super.onBackPressed();
     }
 
     @Override
     public boolean onKeyDown(int k, KeyEvent e) {
-        if (volKeys && !text.isEmpty() && settingsPanel.getVisibility() != View.VISIBLE) {
+        if (volKeys && !text.isEmpty() && settingsPanel.getVisibility() != View.VISIBLE && searchBar.getVisibility() != View.VISIBLE) {
             if (k == KeyEvent.KEYCODE_VOLUME_DOWN) { turn(1); return true; }
             if (k == KeyEvent.KEYCODE_VOLUME_UP) { turn(-1); return true; }
         }
@@ -250,6 +277,16 @@ public class MainActivity extends Activity {
         pv = new PageView();
         root.addView(pv, new FrameLayout.LayoutParams(-1, -1));
 
+        nextBtn = new Button(this);
+        nextBtn.setText("다음권 열기 ▶");
+        nextBtn.setAllCaps(false);
+        nextBtn.setVisibility(View.GONE);
+        nextBtn.setOnClickListener(v -> openNextVolume());
+        FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(-2, -2);
+        nl.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        nl.bottomMargin = dp(40);
+        root.addView(nextBtn, nl);
+
         // 상단 바 (두 번 탭하면 표시)
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
@@ -302,14 +339,91 @@ public class MainActivity extends Activity {
         topBar.setVisibility(View.GONE);
         bottomBar.setVisibility(View.GONE);
 
-        settingsPanel = new ScrollView(this);
+        // 검색 바 (길게 누르기 → 텍스트 검색)
+        searchBar = new LinearLayout(this);
+        searchBar.setOrientation(LinearLayout.VERTICAL);
+        searchBar.setBackgroundColor(0xF0202020);
+        searchBar.setPadding(dp(10), dp(30), dp(10), dp(8));
+        searchBar.setClickable(true);
+        LinearLayout sr = new LinearLayout(this);
+        sr.setOrientation(LinearLayout.HORIZONTAL);
+        sr.setGravity(Gravity.CENTER_VERTICAL);
+        searchEt = new EditText(this);
+        searchEt.setHint("검색어");
+        searchEt.setHintTextColor(0xFF888888);
+        searchEt.setTextColor(Color.WHITE);
+        searchEt.setSingleLine(true);
+        searchEt.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        searchEt.setOnEditorActionListener((v, a, ev) -> { doSearch(true); return true; });
+        sr.addView(searchEt, new LinearLayout.LayoutParams(0, -2, 1f));
+        Button sp1 = new Button(this); sp1.setText("◀"); sp1.setMinWidth(0); sp1.setMinimumWidth(dp(48));
+        sp1.setOnClickListener(v -> doSearch(false));
+        Button sn1 = new Button(this); sn1.setText("▶"); sn1.setMinWidth(0); sn1.setMinimumWidth(dp(48));
+        sn1.setOnClickListener(v -> doSearch(true));
+        Button sx = new Button(this); sx.setText("닫기"); sx.setMinWidth(0); sx.setMinimumWidth(dp(56));
+        sx.setOnClickListener(v -> closeSearch());
+        sr.addView(sp1); sr.addView(sn1); sr.addView(sx);
+        searchBar.addView(sr, new LinearLayout.LayoutParams(-1, -2));
+        searchInfo = new TextView(this);
+        searchInfo.setTextColor(0xFFBBBBBB);
+        searchInfo.setTextSize(12);
+        searchInfo.setPadding(dp(6), 0, 0, 0);
+        searchBar.addView(searchInfo, new LinearLayout.LayoutParams(-1, -2));
+        searchBar.setVisibility(View.GONE);
+        FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(-1, -2);
+        sl.gravity = Gravity.TOP;
+        root.addView(searchBar, sl);
+
+        // 길게 누르기 간이 메뉴
+        quickPanel = new FrameLayout(this);
+        quickPanel.setBackgroundColor(0x66000000);
+        quickPanel.setClickable(true);
+        quickPanel.setOnClickListener(v -> quickPanel.setVisibility(View.GONE));
+        quickCard = new LinearLayout(this);
+        quickCard.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable qg = new GradientDrawable();
+        qg.setColor(0xF0262626);
+        qg.setCornerRadius(dp(14));
+        quickCard.setBackground(qg);
+        quickCard.setPadding(dp(12), dp(12), dp(12), dp(12));
+        quickCard.setClickable(true);
+        quickBtn("텍스트 검색", () -> openSearch());
+        quickBtn("설정", () -> openSettings());
+        quickBtn("TXT 파일 열기", () -> pick());
+        FrameLayout.LayoutParams ql = new FrameLayout.LayoutParams(dp(260), -2);
+        ql.gravity = Gravity.CENTER;
+        quickPanel.addView(quickCard, ql);
+        quickPanel.setVisibility(View.GONE);
+        root.addView(quickPanel, new FrameLayout.LayoutParams(-1, -1));
+
+        // 설정 화면: 최상단에 저장/닫기 버튼
+        settingsPanel = new LinearLayout(this);
+        settingsPanel.setOrientation(LinearLayout.VERTICAL);
         settingsPanel.setBackgroundColor(0xFF202020);
         settingsPanel.setClickable(true);
         settingsPanel.setVisibility(View.GONE);
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setBackgroundColor(0xFF2E2E2E);
+        head.setPadding(dp(18), dp(30), dp(10), dp(8));
+        TextView ht = new TextView(this);
+        ht.setText("설정");
+        ht.setTextColor(Color.WHITE);
+        ht.setTextSize(20);
+        head.addView(ht, new LinearLayout.LayoutParams(0, -2, 1f));
+        Button hs = new Button(this); hs.setText("저장");
+        hs.setOnClickListener(v -> closeSettings(true));
+        Button hc = new Button(this); hc.setText("닫기");
+        hc.setOnClickListener(v -> closeSettings(false));
+        head.addView(hs); head.addView(hc);
+        settingsPanel.addView(head, new LinearLayout.LayoutParams(-1, -2));
+        settingsScroll = new ScrollView(this);
         settingsBody = new LinearLayout(this);
         settingsBody.setOrientation(LinearLayout.VERTICAL);
-        settingsBody.setPadding(dp(18), dp(34), dp(18), dp(30));
-        settingsPanel.addView(settingsBody, new ViewGroup.LayoutParams(-1, -2));
+        settingsBody.setPadding(dp(18), dp(6), dp(18), dp(30));
+        settingsScroll.addView(settingsBody, new ViewGroup.LayoutParams(-1, -2));
+        settingsPanel.addView(settingsScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
         root.addView(settingsPanel, new FrameLayout.LayoutParams(-1, -1));
 
         pickerPanel = new FrameLayout(this);
@@ -319,6 +433,20 @@ public class MainActivity extends Activity {
         root.addView(pickerPanel, new FrameLayout.LayoutParams(-1, -1));
 
         setContentView(root);
+    }
+
+    private void quickBtn(String t, Runnable r) {
+        Button b = new Button(this);
+        b.setText(t);
+        b.setAllCaps(false);
+        b.setOnClickListener(v -> { quickPanel.setVisibility(View.GONE); r.run(); });
+        quickCard.addView(b, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void showQuick() {
+        if (settingsPanel.getVisibility() == View.VISIBLE) return;
+        setMenu(false);
+        quickPanel.setVisibility(View.VISIBLE);
     }
 
     private void setMenu(boolean on) {
@@ -357,8 +485,11 @@ public class MainActivity extends Activity {
         curPage = Math.max(0, Math.min(pageCount - 1, curPage));
         int s = starts[curPage];
         int e = curPage + 1 < pageCount ? starts[curPage + 1] : text.length();
-        pv.layout = buildLayout(text.substring(s, Math.max(s, e)), pv.pagePaint(), pv.textW(), spacing10 / 10f);
+        String sub = text.substring(s, Math.max(s, e));
+        CharSequence cs = searchQ.isEmpty() ? sub : highlight(sub);
+        pv.layout = buildLayout(cs, pv.pagePaint(), pv.textW(), spacing10 / 10f);
         keepOffset = s;
+        nextBtn.setVisibility(!paginating && curPage == pageCount - 1 ? View.VISIBLE : View.GONE);
         pv.invalidate();
         if (save) savePos();
         updateInfo();
@@ -376,7 +507,7 @@ public class MainActivity extends Activity {
     }
 
     // ───────────────────────── 페이지 계산 ─────────────────────────
-    private static StaticLayout buildLayout(String s, TextPaint tp, int w, float mult) {
+    private static StaticLayout buildLayout(CharSequence s, TextPaint tp, int w, float mult) {
         return StaticLayout.Builder.obtain(s, 0, s.length(), tp, Math.max(50, w))
                 .setLineSpacing(0f, mult).setIncludePad(false)
                 .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
@@ -418,6 +549,9 @@ public class MainActivity extends Activity {
         final TextPaint tp = pv.newPaint();
         final int keep = keepOffset;
         paginating = true;
+        lastPW = pv.getWidth();
+        lastPH = pv.getHeight();
+        nextBtn.setVisibility(View.GONE);
         pv.msg = "페이지 계산 중…";
         pv.invalidate();
         updateInfo();
@@ -463,6 +597,12 @@ public class MainActivity extends Activity {
         StaticLayout layout;
         String msg = "";
         private float dx0, dy0;
+        private boolean longFired;
+        private final Runnable lpRun = () -> {
+            longFired = true;
+            if (pendingTap != null) { ui.removeCallbacks(pendingTap); pendingTap = null; }
+            showQuick();
+        };
         private final TextPaint foot = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
 
         PageView() { super(MainActivity.this); }
@@ -519,8 +659,18 @@ public class MainActivity extends Activity {
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     dx0 = e.getX(); dy0 = e.getY();
+                    longFired = false;
+                    if (!text.isEmpty()) ui.postDelayed(lpRun, 550);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (Math.hypot(e.getX() - dx0, e.getY() - dy0) > dp(16)) ui.removeCallbacks(lpRun);
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    ui.removeCallbacks(lpRun);
                     return true;
                 case MotionEvent.ACTION_UP: {
+                    ui.removeCallbacks(lpRun);
+                    if (longFired) return true;
                     float dx = e.getX() - dx0, dy = e.getY() - dy0;
                     if (Math.abs(dx) > dp(70) && Math.abs(dx) > Math.abs(dy) * 1.5f) {
                         if (pendingTap != null) { ui.removeCallbacks(pendingTap); pendingTap = null; }
@@ -554,10 +704,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent d) {
         super.onActivityResult(req, res, d);
+        if (req == REQ_TREE) {
+            if (res == RESULT_OK && d != null && d.getData() != null) {
+                try { getContentResolver().takePersistableUriPermission(d.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+                sp.edit().putString("tree", d.getData().toString()).apply();
+                openNextVolume();
+            }
+            return;
+        }
         if (req == REQ_OPEN && res == RESULT_OK && d != null && d.getData() != null) {
             Uri u = d.getData();
             try { getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
             settingsPanel.setVisibility(View.GONE);
+            closeSearch();
             setMenu(false);
             open(u);
         }
@@ -567,6 +726,9 @@ public class MainActivity extends Activity {
         savePos();
         gen++;
         paginating = true;
+        lastPW = 0; lastPH = 0;
+        lower = null; lastHit = -1;
+        nextBtn.setVisibility(View.GONE);
         text = "";
         pageCount = 0;
         pv.layout = null;
@@ -641,12 +803,21 @@ public class MainActivity extends Activity {
     private void openSettings() {
         setMenu(false);
         layoutDirty = false;
+        snapI = new int[]{theme, customBg, customFg, spacing10, marginH, marginV, font, showNum ? 1 : 0, volKeys ? 1 : 0};
+        snapSize = sizeSp;
         fillSettings();
-        settingsPanel.scrollTo(0, 0);
+        settingsScroll.scrollTo(0, 0);
         settingsPanel.setVisibility(View.VISIBLE);
     }
 
-    private void closeSettings() {
+    /** save=true: 저장하고 닫기 / false: 이번에 바꾼 내용을 취소하고 닫기 */
+    private void closeSettings(boolean save) {
+        if (!save && snapI != null) {
+            theme = snapI[0]; customBg = snapI[1]; customFg = snapI[2]; spacing10 = snapI[3];
+            marginH = snapI[4]; marginV = snapI[5]; font = snapI[6]; showNum = snapI[7] == 1; volKeys = snapI[8] == 1;
+            sizeSp = snapSize;
+            layoutDirty = false;
+        }
         settingsPanel.setVisibility(View.GONE);
         savePrefs();
         if (layoutDirty && !text.isEmpty()) { keepOffset = pageCount > 0 ? starts[Math.min(curPage, pageCount - 1)] : keepOffset; repaginate(); }
@@ -693,11 +864,8 @@ public class MainActivity extends Activity {
     private static String fmt(int v, int div) { return div == 1 ? String.valueOf(v) : String.valueOf(v / (float) div); }
 
     private void fillSettings() {
-        int scroll = settingsPanel.getScrollY();
+        int scroll = settingsScroll.getScrollY();
         settingsBody.removeAllViews();
-
-        TextView head = label("설정", 22, Color.WHITE);
-        settingsBody.addView(head);
 
         section("파일");
         Button open = new Button(this);
@@ -785,14 +953,7 @@ public class MainActivity extends Activity {
         up.setOnClickListener(v -> checkUpdate(true));
         settingsBody.addView(up, new LinearLayout.LayoutParams(-1, -2));
 
-        Button close = new Button(this);
-        close.setText("닫기");
-        close.setOnClickListener(v -> closeSettings());
-        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, -2);
-        cl.topMargin = dp(24);
-        settingsBody.addView(close, cl);
-
-        settingsPanel.post(() -> settingsPanel.scrollTo(0, scroll));
+        settingsScroll.post(() -> settingsScroll.scrollTo(0, scroll));
     }
 
     // ───────────────────────── 색 선택 ─────────────────────────
@@ -814,6 +975,8 @@ public class MainActivity extends Activity {
         final SeekBar[] sbs = new SeekBar[3];
         final EditText hex = new EditText(this);
         final boolean[] guard = {false};
+        box.addView(label("색 코드 (예: #F4ECD8)", 13, 0xFFCCCCCC));
+        box.addView(hex, new LinearLayout.LayoutParams(-1, -2));
         final Runnable refresh = () -> {
             int c = cur[0];
             prev.setBackgroundColor(isBg ? c : customBg);
@@ -843,7 +1006,6 @@ public class MainActivity extends Activity {
             box.addView(s, new LinearLayout.LayoutParams(-1, -2));
         }
 
-        box.addView(label("색 코드 (예: #F4ECD8)", 13, 0xFFCCCCCC));
         hex.setSingleLine(true);
         hex.setTextColor(Color.WHITE);
         hex.addTextChangedListener(new TextWatcher() {
@@ -865,7 +1027,6 @@ public class MainActivity extends Activity {
                 } catch (Exception ignored) {}
             }
         });
-        box.addView(hex, new LinearLayout.LayoutParams(-1, -2));
         refresh.run();
 
         LinearLayout btns = new LinearLayout(this);
@@ -892,6 +1053,157 @@ public class MainActivity extends Activity {
         sv.addView(box, new ViewGroup.LayoutParams(-1, -2));
         pickerPanel.addView(sv, new FrameLayout.LayoutParams(-1, -1));
         pickerPanel.setVisibility(View.VISIBLE);
+    }
+
+    // ───────────────────────── 텍스트 검색 ─────────────────────────
+    private int pageOf(int off) {
+        int lo = 0, hi = pageCount - 1;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) >>> 1;
+            if (starts[mid] <= off) lo = mid; else hi = mid - 1;
+        }
+        return Math.max(0, lo);
+    }
+
+    private void openSearch() {
+        if (text.isEmpty()) { Toast.makeText(this, "먼저 TXT 파일을 열어 주세요", Toast.LENGTH_SHORT).show(); return; }
+        setMenu(false);
+        searchBar.setVisibility(View.VISIBLE);
+        searchEt.requestFocus();
+        searchEt.post(() -> {
+            InputMethodManager im = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (im != null) im.showSoftInput(searchEt, InputMethodManager.SHOW_IMPLICIT);
+        });
+    }
+
+    private void closeSearch() {
+        InputMethodManager im = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (im != null) im.hideSoftInputFromWindow(searchEt.getWindowToken(), 0);
+        searchBar.setVisibility(View.GONE);
+        searchQ = "";
+        lastHit = -1;
+        if (pageCount > 0 && !paginating) showPage(false);
+    }
+
+    private CharSequence highlight(String sub) {
+        SpannableString ss = new SpannableString(sub);
+        String hay = sub.toLowerCase(Locale.ROOT);
+        String q = searchQ.toLowerCase(Locale.ROOT);
+        if (hay.length() != sub.length()) { hay = sub; q = searchQ; }
+        int i = 0;
+        while (!q.isEmpty() && (i = hay.indexOf(q, i)) >= 0) {
+            ss.setSpan(new BackgroundColorSpan(0xFFFFD54F), i, i + q.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            ss.setSpan(new ForegroundColorSpan(0xFF000000), i, i + q.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            i += q.length();
+        }
+        return ss;
+    }
+
+    private void doSearch(boolean fwd) {
+        String q = searchEt.getText().toString();
+        if (q.isEmpty() || text.isEmpty() || pageCount == 0 || paginating) return;
+        if (!q.equals(searchQ)) { searchQ = q; lastHit = -1; }
+        if (lower == null) lower = text.toLowerCase(Locale.ROOT);
+        boolean lowOk = lower.length() == text.length();
+        String hay = lowOk ? lower : text;
+        String needle = lowOk ? q.toLowerCase(Locale.ROOT) : q;
+        int ps = starts[curPage];
+        int pe = curPage + 1 < pageCount ? starts[curPage + 1] : text.length();
+        boolean inPage = lastHit >= ps && lastHit < pe;
+        int h;
+        if (fwd) {
+            int from = inPage ? lastHit + 1 : ps;
+            h = hay.indexOf(needle, from);
+            if (h < 0 && from > 0) {
+                h = hay.indexOf(needle, 0);
+                if (h >= 0) Toast.makeText(this, "끝까지 검색해서 처음부터 다시 찾았어요", Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            int from = inPage ? lastHit - 1 : ps - 1;
+            h = from >= 0 ? hay.lastIndexOf(needle, from) : -1;
+            if (h < 0) {
+                h = hay.lastIndexOf(needle);
+                if (h >= 0) Toast.makeText(this, "처음까지 검색해서 끝에서부터 다시 찾았어요", Toast.LENGTH_SHORT).show();
+            }
+        }
+        if (h < 0) { searchInfo.setText("찾을 수 없어요"); showPage(false); return; }
+        lastHit = h;
+        curPage = pageOf(h);
+        showPage(true);
+        searchInfo.setText((curPage + 1) + " / " + pageCount + " 쪽에서 찾음");
+        InputMethodManager im = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (im != null) im.hideSoftInputFromWindow(searchEt.getWindowToken(), 0);
+    }
+
+    // ───────────────────────── 다음권 ─────────────────────────
+    private static int natCmp(String a, String b) {
+        int i = 0, j = 0;
+        while (i < a.length() && j < b.length()) {
+            char x = a.charAt(i), y = b.charAt(j);
+            if (Character.isDigit(x) && Character.isDigit(y)) {
+                int i2 = i, j2 = j;
+                while (i2 < a.length() && Character.isDigit(a.charAt(i2))) i2++;
+                while (j2 < b.length() && Character.isDigit(b.charAt(j2))) j2++;
+                String na = a.substring(i, i2).replaceFirst("^0+(?=.)", ""), nb = b.substring(j, j2).replaceFirst("^0+(?=.)", "");
+                if (na.length() != nb.length()) return na.length() - nb.length();
+                int c = na.compareTo(nb);
+                if (c != 0) return c;
+                i = i2; j = j2;
+            } else {
+                int c = Character.compare(Character.toLowerCase(x), Character.toLowerCase(y));
+                if (c != 0) return c;
+                i++; j++;
+            }
+        }
+        return (a.length() - i) - (b.length() - j);
+    }
+
+    private void askTree() {
+        Toast.makeText(this, "책 파일들이 들어 있는 폴더를 한 번만 선택해 주세요", Toast.LENGTH_LONG).show();
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, REQ_TREE);
+    }
+
+    /** 선택해 둔 폴더에서 현재 파일 다음 순서(숫자 순)의 TXT를 연다 */
+    private void openNextVolume() {
+        final String t = sp.getString("tree", null);
+        if (t == null) { askTree(); return; }
+        final String cur = curName;
+        nextBtn.setEnabled(false);
+        new Thread(() -> {
+            String err = null;
+            Uri next = null;
+            boolean needTree = false;
+            try {
+                Uri tree = Uri.parse(t);
+                Uri kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
+                ArrayList<String[]> files = new ArrayList<>();
+                try (Cursor c = getContentResolver().query(kids, new String[]{
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+                    while (c != null && c.moveToNext()) {
+                        String nm = c.getString(1);
+                        if (nm != null && !DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2)) && nm.toLowerCase(Locale.ROOT).endsWith(".txt"))
+                            files.add(new String[]{c.getString(0), nm});
+                    }
+                }
+                Collections.sort(files, (x, y) -> natCmp(x[1], y[1]));
+                int idx = -1;
+                for (int i = 0; i < files.size(); i++) if (files.get(i)[1].equals(cur)) { idx = i; break; }
+                if (idx < 0) needTree = true;
+                else if (idx + 1 >= files.size()) err = "마지막 권이에요";
+                else next = DocumentsContract.buildDocumentUriUsingTree(tree, files.get(idx + 1)[0]);
+            } catch (Exception e) { needTree = true; }
+            final Uri fn = next; final String fe = err; final boolean nt = needTree;
+            ui.post(() -> {
+                nextBtn.setEnabled(true);
+                if (fn != null) open(fn);
+                else if (nt) { Toast.makeText(this, "현재 파일이 선택한 폴더에 없어요. 폴더를 다시 선택해 주세요", Toast.LENGTH_LONG).show(); askTree(); }
+                else if (fe != null) Toast.makeText(this, fe, Toast.LENGTH_LONG).show();
+            });
+        }).start();
     }
 
     // ───────────────────────── 업데이트 ─────────────────────────
