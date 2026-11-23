@@ -108,9 +108,11 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         sp = getSharedPreferences("txt", MODE_PRIVATE);
+        installCrashLog();
         loadPrefs();
-        goImmersive();
         build();
+        goImmersive();
+        showLastCrash();
         if (!handleIntent(getIntent())) {
             String last = sp.getString("uri", null);
             if (last != null) open(Uri.parse(last)); else showHelp();
@@ -166,6 +168,10 @@ public class MainActivity extends Activity {
 
     /** 전체화면(상태바·내비게이션바 숨김). 화면 밝기는 건드리지 않아 휴대폰 밝기를 그대로 따른다 */
     private void goImmersive() {
+        try { goImmersive0(); } catch (Throwable t) { /* 전체화면 실패해도 앱은 계속 */ }
+    }
+
+    private void goImmersive0() {
         Window w = getWindow();
         if (Build.VERSION.SDK_INT >= 28) {
             WindowManager.LayoutParams lp = w.getAttributes();
@@ -185,6 +191,31 @@ public class MainActivity extends Activity {
                     | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         }
+    }
+
+    /** 오류로 종료되면 내용을 저장해 두었다가 다음 실행 때 보여준다 */
+    private void installCrashLog() {
+        final Thread.UncaughtExceptionHandler old = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                java.io.StringWriter sw = new java.io.StringWriter();
+                e.printStackTrace(new java.io.PrintWriter(sw));
+                String st = sw.toString();
+                sp.edit().putString("crash", st.length() > 3000 ? st.substring(0, 3000) : st).commit();
+            } catch (Throwable ignored) {}
+            if (old != null) old.uncaughtException(t, e);
+        });
+    }
+
+    private void showLastCrash() {
+        final String c = sp.getString("crash", null);
+        if (c == null) return;
+        sp.edit().remove("crash").apply();
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("이전 실행 중 오류가 있었어요")
+                .setMessage(c)
+                .setPositiveButton("확인", null)
+                .show();
     }
 
     // ───────────────────────── 설정 저장 ─────────────────────────
