@@ -31,7 +31,8 @@ public class AlarmRingActivity extends Activity {
     private LinearLayout btns;
     private final Handler h = new Handler(Looper.getMainLooper());
     private BroadcastReceiver closer;
-    private int base = -1;
+    private int base = -1, kIdx = -1;
+    private String key = "";
     private final Runnable tick = new Runnable() {
         @Override public void run() { updateClock(); h.postDelayed(this, 1000); }
     };
@@ -129,6 +130,8 @@ public class AlarmRingActivity extends Activity {
 
     private void bind(Intent i) {
         base = i.getIntExtra("base", -1);
+        key = i.getStringExtra("key") == null ? "" : i.getStringExtra("key");
+        kIdx = i.getIntExtra("k", -1);
         String text = i.getStringExtra("text");
         msg.setText(text == null || text.isEmpty() ? "" : "\"" + text + "\"");
         String sh = i.getStringExtra("shift");
@@ -168,7 +171,7 @@ public class AlarmRingActivity extends Activity {
     }
 
     private void send(String action) {
-        try { startService(new Intent(this, AlarmService.class).setAction(action).putExtra("base", base)); } catch (Throwable ignored) { }
+        try { startService(new Intent(this, AlarmService.class).setAction(action).putExtra("base", base).putExtra("key", key).putExtra("k", kIdx)); } catch (Throwable ignored) { }
         finish();
     }
 

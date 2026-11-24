@@ -174,10 +174,25 @@ final class Store {
     }
 
     // ---- 백업 ----
+    /** 이 폰에만 의미 있는 상태(로그인·연결·권한 안내·위젯·알람 진행 상태 등). 백업에 넣지 않고, 복원해도 덮어쓰지 않는다. */
+    private static boolean deviceKey(String k) {
+        switch (k) {
+            case "uid": case "email": case "cid": case "code": case "partner": case "is_spouse":
+            case "synced_cid": case "synced_pt": case "mcount": case "scount": case "grp_mate":
+            case "perm_next": case "perm_guide_ver": case "notif_asked": case "login_later":
+            case "srv_bk": case "srv_bk_ms": case "auto_bk": case "app_ver": case "purged_mate_uses":
+            case "sched_codes": case "al_state":
+                return true;
+            default:
+                return k.matches("w\\d+_.*");
+        }
+    }
+
     static String exportJson() {
         JSONObject root = new JSONObject();
         try {
             for (Map.Entry<String, ?> e : sp.getAll().entrySet()) {
+                if (deviceKey(e.getKey())) continue;
                 Object v = e.getValue();
                 JSONArray a = new JSONArray();
                 if (v instanceof Boolean) { a.put("b"); a.put(v); }
@@ -195,10 +210,11 @@ final class Store {
         try {
             JSONObject root = new JSONObject(json);
             SharedPreferences.Editor ed = sp.edit();
-            ed.clear();
+            for (String ek : new java.util.ArrayList<>(sp.getAll().keySet())) if (!deviceKey(ek)) ed.remove(ek);   // 기기 상태(로그인·연결 등)는 지우지 않는다
             java.util.Iterator<String> it = root.keys();
             while (it.hasNext()) {
                 String k = it.next();
+                if (deviceKey(k)) continue;   // 예전 백업에 들어 있던 기기 상태도 무시
                 JSONArray a = root.getJSONArray(k);
                 String t = a.getString(0);
                 switch (t) {

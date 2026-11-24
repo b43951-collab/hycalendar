@@ -290,7 +290,7 @@ final class DayUi {
         if (!m.allDay) p.add(Alarms.clockShort(m.sMin) + "~" + Alarms.clockShort(m.eMin));
         if (m.end != null && !m.end.equals(m.start) && !m.repeats()) p.add(md(m.start) + "~" + md(m.end));
         if (m.repeats()) p.add("반복" + (m.end != null ? " ~" + md(m.end) : ""));
-        if (m.notify >= 0) p.add("알림 " + Alarms.clockShort(m.notify));
+        if (m.notify >= 0) p.add("알림 " + (m.notifyDays == 1 ? "하루 전 " : m.notifyDays == 7 ? "일주일 전 " : "") + Alarms.clockShort(m.notify));
         if (!showDate) p.add(0, md(m.start));
         return String.join("  ·  ", p);
     }
@@ -482,7 +482,7 @@ final class DayUi {
         } else {
             m.id = src.id; m.text = src.text; m.url = src.url; m.label = src.label; m.color = src.color; m.bg = src.bg; m.shared = src.shared; m.family = src.family; m.owner = src.owner;
             m.todo = src.todo; m.done = src.done; m.allDay = src.allDay; m.start = src.start; m.end = src.end;
-            m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.repShift = src.repShift; m.repDow = src.repDow; m.repDay = src.repDay; m.repDate = src.repDate; m.repLunar = src.repLunar;
+            m.sMin = src.sMin; m.eMin = src.eMin; m.notify = src.notify; m.notifyDays = src.notifyDays; m.repShift = src.repShift; m.repDow = src.repDow; m.repDay = src.repDay; m.repDate = src.repDate; m.repLunar = src.repLunar;
         }
 
         LinearLayout root = new LinearLayout(act);
@@ -601,12 +601,19 @@ final class DayUi {
         LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         np.setMargins(0, 0, dp(10), 0);
         nr.addView(nt, np);
+        final View nds = Ui.segmented(act, th, new String[]{"당일", "하루 전", "일주일 전"}, m.notifyDays == 1 ? 1 : m.notifyDays == 7 ? 2 : 0,
+                i -> m.notifyDays = i == 1 ? 1 : i == 2 ? 7 : 0);
+        nds.setVisibility(m.notify >= 0 ? View.VISIBLE : View.GONE);
         nr.addView(Ui.switchView(act, th, m.notify >= 0, on -> {
             m.notify = on ? 540 : -1;
             nt.setText(Alarms.clockShort(540));
             nt.setVisibility(on ? View.VISIBLE : View.GONE);
+            nds.setVisibility(on ? View.VISIBLE : View.GONE);
         }));
         c3.addView(nr);
+        LinearLayout.LayoutParams ndp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ndp.setMargins(0, dp(8), 0, dp(2));
+        c3.addView(nds, ndp);
         box.addView(c3);
 
         // 반복 (고른 조건을 모두 만족하는 날만)

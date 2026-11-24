@@ -35,6 +35,8 @@ public class AlarmService extends Service {
     private final Handler h = new Handler(Looper.getMainLooper());
     private Runnable autoOff;
     private int base = -1;
+    private String key = "";
+    private int kIdx = -1;
 
     @Override
     public IBinder onBind(Intent i) { return null; }
@@ -44,11 +46,20 @@ public class AlarmService extends Service {
         if (i == null) { finishRing(); return START_NOT_STICKY; }
         String a = i.getAction();
         if (ACT_STOP.equals(a)) {
+            Store.init(this);
+            String kk = i.getStringExtra("key");
+            Alarms.markStopped(kk != null && !kk.isEmpty() ? kk : key);   // 오늘 이 알람은 종료됨: 앱을 열어 재예약해도 되살아나지 않는다
             Alarms.cancelRest(this, i.getIntExtra("base", base));
             finishRing();
             return START_NOT_STICKY;
         }
         if (ACT_SNOOZE.equals(a)) {
+            Store.init(this);
+            String kk = i.getStringExtra("key");
+            int kx = i.getIntExtra("k", kIdx);
+            // 누른 시각부터 N분 뒤에 다시 울리도록 기록하고 다시 예약한다
+            Alarms.markSnoozed(kk != null && !kk.isEmpty() ? kk : key, kx, System.currentTimeMillis());
+            Alarms.schedule(this);
             finishRing();
             return START_NOT_STICKY;
         }
@@ -57,6 +68,8 @@ public class AlarmService extends Service {
             Ui.init(this);
             silence();
             base = i.getIntExtra("base", -1);
+            key = i.getStringExtra("key") == null ? "" : i.getStringExtra("key");
+            kIdx = i.getIntExtra("k", -1);
             Intent act = new Intent(this, AlarmRingActivity.class);
             if (i.getExtras() != null) act.putExtras(i.getExtras());
             act.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -92,7 +105,7 @@ public class AlarmService extends Service {
             nm.createNotificationChannel(ch);
         }
         PendingIntent full = PendingIntent.getActivity(this, 1, act, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Intent st = new Intent(this, AlarmService.class).setAction(ACT_STOP).putExtra("base", base);
+        Intent st = new Intent(this, AlarmService.class).setAction(ACT_STOP).putExtra("base", base).putExtra("key", key);
         PendingIntent stop = PendingIntent.getService(this, 2, st, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         String title = i.getStringExtra("title");
         return new Notification.Builder(this, CH)

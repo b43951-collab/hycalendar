@@ -22,6 +22,7 @@ final class Memos {
         LocalDate start = LocalDate.now(), end = null; // end==null: 반복 메모는 종료 없음, 일반 메모는 하루
         int sMin = 540, eMin = 600;        // 하루 종일이 아닐 때 시간
         int notify = -1;                   // 알림 시각(하루 중 분), -1 없음
+        int notifyDays;                    // 알림 시점: 0 당일, 1 하루 전, 7 일주일 전
         String repShift = "";              // 근무에 반복: A B C O(휴)
         int repDow;                        // 요일에 반복: bit0=일 … bit6=토
         int repDay;                        // 근무 N일차: bit0=1일차 … bit5=6일차, 0이면 전체
@@ -165,7 +166,7 @@ final class Memos {
         o.put("id", m.id); o.put("t", m.text); o.put("u", m.url); o.put("l", m.label);
         o.put("c2", m.color); o.put("bg2", m.bg); o.put("td", m.todo); o.put("dn", m.done); o.put("ad", m.allDay);
         o.put("s", m.start.toString()); o.put("e", m.end == null ? "" : m.end.toString());
-        o.put("sm", m.sMin); o.put("em", m.eMin); o.put("n", m.notify);
+        o.put("sm", m.sMin); o.put("em", m.eMin); o.put("n", m.notify); o.put("nd", m.notifyDays);
         o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar); o.put("sh", m.shared); o.put("fm", m.family); o.put("ow", m.owner);
         return o;
     }
@@ -184,7 +185,7 @@ final class Memos {
         m.start = LocalDate.parse(o.getString("s"));
         String e = o.optString("e");
         m.end = e.isEmpty() ? null : LocalDate.parse(e);
-        m.sMin = o.optInt("sm", 540); m.eMin = o.optInt("em", 600); m.notify = o.optInt("n", -1);
+        m.sMin = o.optInt("sm", 540); m.eMin = o.optInt("em", 600); m.notify = o.optInt("n", -1); m.notifyDays = o.optInt("nd", 0);
         m.repShift = o.optString("rs").replace("L", ""); m.repDow = o.optInt("rd"); m.repDay = o.optInt("rdy");
         m.repDate = o.has("rdt") ? o.optInt("rdt") : (o.optBoolean("rm") ? 1 : 0);
         m.repLunar = o.optBoolean("rl");

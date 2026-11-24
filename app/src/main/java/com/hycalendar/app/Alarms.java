@@ -235,6 +235,34 @@ public class Alarms extends BroadcastReceiver {
         return PendingIntent.getBroadcast(c, code, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
+    // ---- 알람별 진행 상태: '종료'했거나 '다시 울림'을 누른 날은 재예약 때도 그대로 지킨다 ----
+    // 키 = 알람id_근무날짜(epochDay). 값 {"s":1}=종료, {"k":울린 차례,"t":다시 울림을 누른 시각(ms)}
+    private static synchronized JSONObject alState() {
+        try { return new JSONObject(Store.getS("al_state", "{}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private static void saveAlState(JSONObject o) {
+        long limit = LocalDate.now().toEpochDay() - 3;
+        java.util.Iterator<String> it = o.keys();
+        List<String> drop = new ArrayList<>();
+        while (it.hasNext()) {
+            String k = it.next();
+            try { if (Long.parseLong(k.substring(k.indexOf('_') + 1)) < limit) drop.add(k); } catch (Exception e) { drop.add(k); }
+        }
+        for (String k : drop) o.remove(k);
+        Store.putS("al_state", o.toString());
+    }
+
+    static synchronized void markStopped(String key) {
+        if (key == null || key.isEmpty()) return;
+        try { JSONObject o = alState(); o.put(key, new JSONObject().put("s", 1)); saveAlState(o); } catch (Exception ignored) { }
+    }
+
+    static synchronized void markSnoozed(String key, int k, long at) {
+        if (key == null || key.isEmpty() || k < 0) return;
+        try { JSONObject o = alState(); o.put(key, new JSONObject().put("k", k).put("t", at)); saveAlState(o); } catch (Exception ignored) { }
+    }
+
     static void schedule(Context c) {
         try {
             doSchedule(c);
@@ -267,6 +295,7 @@ public class Alarms extends BroadcastReceiver {
         long now = System.currentTimeMillis();
         PendingIntent show = PendingIntent.getActivity(c, 0, new Intent(c, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         String[] dowN = DOW;
+        JSONObject state = alState();
         for (Item it : items()) {
             if (!it.on) continue;
             for (int off = -1; off <= DAYS; off++) {
@@ -274,11 +303,20 @@ public class Alarms extends BroadcastReceiver {
                 if (!applies(it, d)) continue;
                 int base = it.id * 1000 + (off + 1) * 10;
                 int times = 1 + (it.snoozeMin > 0 ? Math.min(it.snoozeCnt, 8) : 0);
+                final String key = it.id + "_" + d.toEpochDay();
+                JSONObject st = state.optJSONObject(key);
+                if (st != null && st.optInt("s") == 1) continue;   // 이미 '알람 종료'를 누른 날: 남은 다시 울림도 만들지 않는다
+                int sk = st == null ? -1 : st.optInt("k", -1);
+                long snoozedAt = st == null ? 0 : st.optLong("t");
                 for (int k = 0; k < times; k++) {
                     long at = fireAt(it, d) + (long) k * it.snoozeMin * 60000L;
+                    if (sk >= 0) {  // '다시 울림'을 누른 뒤에는 누른 시각부터 N분 간격
+                        if (k <= sk) continue;
+                        at = snoozedAt + (long) (k - sk) * it.snoozeMin * 60000L;
+                    }
                     if (at <= now) continue;
                     Intent ex = new Intent()
-                            .putExtra("kind", "alarm").putExtra("nid", base + k).putExtra("base", base)
+                            .putExtra("kind", "alarm").putExtra("nid", base + k).putExtra("base", base).putExtra("key", key).putExtra("k", k)
                             .putExtra("title", title(it) + " 알람")
                             .putExtra("text", it.cheer.isEmpty() ? d.getMonthValue() + "/" + d.getDayOfMonth() + "(" + dowN[d.getDayOfWeek().getValue() % 7] + ") " + shiftWord(d) + " · 출근 준비하세요" : it.cheer)
                             .putExtra("vib", it.vib).putExtra("sound", it.sound).putExtra("auto", it.autoOff)
@@ -292,13 +330,13 @@ public class Alarms extends BroadcastReceiver {
         int n = 0;
         for (Memos.Memo m : Memos.all()) {
             if (m.notify < 0) continue;
-            for (int off = 0; off <= DAYS && n < 300; off++) {
+            for (int off = 0; off <= DAYS + m.notifyDays && n < 300; off++) {
                 LocalDate d = today.plusDays(off);
                 if (!Memos.applies(m, d)) continue;
-                long at = LocalDateTime.of(d, LocalTime.of(m.notify / 60, m.notify % 60)).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                long at = LocalDateTime.of(d.minusDays(m.notifyDays), LocalTime.of(m.notify / 60, m.notify % 60)).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
                 if (at <= now) continue;
                 int code = 900000 + n++;
-                String body = m.text.replace('\n', ' ');
+                String body = (m.notifyDays == 1 ? "[내일] " : m.notifyDays == 7 ? "[일주일 뒤] " : "") + m.text.replace('\n', ' ');
                 Intent ex = new Intent().putExtra("kind", "memo").putExtra("nid", code)
                         .putExtra("title", m.label.isEmpty() ? "메모 알림" : m.label).putExtra("text", body);
                 setExact(am, at, show, pi(c, code, ex));
@@ -319,6 +357,7 @@ public class Alarms extends BroadcastReceiver {
         String a = i.getAction();
         if (ACTION_RING.equals(a)) {
             ring(c, i);
+            schedule(c);   // 울릴 때마다 앞으로 21일 치를 다시 채워서, 앱을 오래 안 열어도 알람이 끊기지 않게 한다
         } else if (ACTION_STOP.equals(a)) {
             stop(c, i);
         } else {
@@ -338,6 +377,7 @@ public class Alarms extends BroadcastReceiver {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         int base = i.getIntExtra("base", -1), nid = i.getIntExtra("nid", -1);
+        markStopped(i.getStringExtra("key"));
         if (nm != null && nid >= 0) nm.cancel(nid);
         if (am != null && base >= 0) for (int k = 1; k <= 9; k++) am.cancel(pi(c, base + k, null));
     }
@@ -386,7 +426,7 @@ public class Alarms extends BroadcastReceiver {
         if (alarm) {
             if (auto > 0) b.setTimeoutAfter(auto * 60000L);
             Intent st = new Intent(c, Alarms.class).setAction(ACTION_STOP)
-                    .putExtra("nid", nid).putExtra("base", i.getIntExtra("base", -1));
+                    .putExtra("nid", nid).putExtra("base", i.getIntExtra("base", -1)).putExtra("key", i.getStringExtra("key"));
             b.addAction(new Notification.Action.Builder(0, "끄기",
                     PendingIntent.getBroadcast(c, 800000 + (nid % 100000), st, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)).build());
             b.setCategory(Notification.CATEGORY_ALARM);
