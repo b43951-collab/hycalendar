@@ -45,7 +45,9 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -81,6 +83,8 @@ public class MainActivity extends Activity {
 
     private interface IntCb { void on(int v); }
 
+    private static final class Fe { String id, name, mime; long size; boolean dir, sel; }
+
     private final Handler ui = new Handler(Looper.getMainLooper());
     private SharedPreferences sp;
 
@@ -113,6 +117,17 @@ public class MainActivity extends Activity {
     private boolean seeking;
     private LinearLayout settingsPanel, settingsBody;
     private ScrollView settingsScroll;
+    private LinearLayout fmPanel, fmBottom;
+    private TextView fmPath, fmInfo;
+    private ListView fmList;
+    private BaseAdapter fmAdapter;
+    private Uri fmTree;
+    private String fmDirId = "";
+    private final ArrayList<String> fmStackIds = new ArrayList<>(), fmStackNames = new ArrayList<>();
+    private ArrayList<Fe> fmItems = new ArrayList<>();
+    private boolean fmMoving;
+    private ArrayList<Fe> fmMoveSrc;
+    private String fmMoveSrcDir = "";
     private LinearLayout searchBar, quickCard;
     private FrameLayout quickPanel;
     private EditText searchEt;
@@ -179,6 +194,7 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (pickerPanel.getVisibility() == View.VISIBLE) { pickerPanel.setVisibility(View.GONE); return; }
+        if (pickerPanel.getVisibility() != View.VISIBLE && fmPanel.getVisibility() == View.VISIBLE) { fmBack(); return; }
         if (settingsPanel.getVisibility() == View.VISIBLE) { closeSettings(true); return; }
         if (quickPanel.getVisibility() == View.VISIBLE) { quickPanel.setVisibility(View.GONE); return; }
         if (searchBar.getVisibility() == View.VISIBLE) { closeSearch(); return; }
@@ -401,6 +417,7 @@ public class MainActivity extends Activity {
         quickCard.setPadding(dp(12), dp(12), dp(12), dp(12));
         quickCard.setClickable(true);
         quickBtn("텍스트 검색", () -> openSearch());
+        quickBtn("파일 관리", () -> openFm());
         quickBtn("설정", () -> openSettings());
         quickBtn("TXT 파일 열기", () -> pick());
         FrameLayout.LayoutParams ql = new FrameLayout.LayoutParams(dp(260), -2);
@@ -438,6 +455,86 @@ public class MainActivity extends Activity {
         settingsScroll.addView(settingsBody, new ViewGroup.LayoutParams(-1, -2));
         settingsPanel.addView(settingsScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
         root.addView(settingsPanel, new FrameLayout.LayoutParams(-1, -1));
+
+        // 파일 관리 화면 (이동·삭제·이름 변경)
+        fmPanel = new LinearLayout(this);
+        fmPanel.setOrientation(LinearLayout.VERTICAL);
+        fmPanel.setBackgroundColor(0xFF202020);
+        fmPanel.setClickable(true);
+        fmPanel.setVisibility(View.GONE);
+        LinearLayout fh = new LinearLayout(this);
+        fh.setOrientation(LinearLayout.HORIZONTAL);
+        fh.setGravity(Gravity.CENTER_VERTICAL);
+        fh.setBackgroundColor(0xFF2E2E2E);
+        fh.setPadding(dp(18), dp(30), dp(10), dp(8));
+        LinearLayout ft = new LinearLayout(this);
+        ft.setOrientation(LinearLayout.VERTICAL);
+        TextView ftt = new TextView(this);
+        ftt.setText("파일 관리");
+        ftt.setTextColor(Color.WHITE);
+        ftt.setTextSize(20);
+        ft.addView(ftt);
+        fmPath = new TextView(this);
+        fmPath.setTextColor(0xFFAAAAAA);
+        fmPath.setTextSize(12);
+        fmPath.setSingleLine(true);
+        fmPath.setEllipsize(TextUtils.TruncateAt.START);
+        ft.addView(fmPath);
+        fh.addView(ft, new LinearLayout.LayoutParams(0, -2, 1f));
+        Button fup = new Button(this); fup.setText("상위");
+        fup.setOnClickListener(v -> fmUp());
+        Button fnf = new Button(this); fnf.setText("새 폴더");
+        fnf.setOnClickListener(v -> fmNewFolder());
+        Button fcl = new Button(this); fcl.setText("닫기");
+        fcl.setOnClickListener(v -> fmClose());
+        fh.addView(fup); fh.addView(fnf); fh.addView(fcl);
+        fmPanel.addView(fh, new LinearLayout.LayoutParams(-1, -2));
+        fmList = new ListView(this);
+        fmList.setDivider(new android.graphics.drawable.ColorDrawable(0xFF333333));
+        fmList.setDividerHeight(1);
+        fmAdapter = new BaseAdapter() {
+            public int getCount() { return fmItems.size(); }
+            public Object getItem(int i) { return fmItems.get(i); }
+            public long getItemId(int i) { return i; }
+            public View getView(int i, View cv, ViewGroup g) {
+                final Fe e = fmItems.get(i);
+                LinearLayout row = new LinearLayout(MainActivity.this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(8), dp(4), dp(14), dp(4));
+                CheckBox cb = new CheckBox(MainActivity.this);
+                cb.setChecked(e.sel);
+                cb.setOnClickListener(v -> { e.sel = cb.isChecked(); updateFmBottom(); });
+                row.addView(cb);
+                TextView nm = new TextView(MainActivity.this);
+                nm.setText((e.dir ? "📁 " : "📄 ") + e.name);
+                nm.setTextColor(e.dir ? 0xFFFFE082 : Color.WHITE);
+                nm.setTextSize(15);
+                nm.setPadding(dp(4), dp(10), dp(8), dp(10));
+                row.addView(nm, new LinearLayout.LayoutParams(0, -2, 1f));
+                if (!e.dir) {
+                    TextView sz = new TextView(MainActivity.this);
+                    sz.setText(fmtSize(e.size));
+                    sz.setTextColor(0xFF999999);
+                    sz.setTextSize(12);
+                    row.addView(sz);
+                }
+                row.setOnClickListener(v -> fmClick(e));
+                return row;
+            }
+        };
+        fmList.setAdapter(fmAdapter);
+        fmPanel.addView(fmList, new LinearLayout.LayoutParams(-1, 0, 1f));
+        fmInfo = new TextView(this);
+        fmInfo.setTextColor(0xFFBBBBBB);
+        fmInfo.setTextSize(12);
+        fmInfo.setPadding(dp(14), dp(6), dp(14), dp(2));
+        fmPanel.addView(fmInfo, new LinearLayout.LayoutParams(-1, -2));
+        fmBottom = new LinearLayout(this);
+        fmBottom.setOrientation(LinearLayout.HORIZONTAL);
+        fmBottom.setPadding(dp(8), 0, dp(8), dp(20));
+        fmPanel.addView(fmBottom, new LinearLayout.LayoutParams(-1, -2));
+        root.addView(fmPanel, new FrameLayout.LayoutParams(-1, -1));
 
         pickerPanel = new FrameLayout(this);
         pickerPanel.setBackgroundColor(0xFF202020);
@@ -813,9 +910,12 @@ public class MainActivity extends Activity {
         super.onActivityResult(req, res, d);
         if (req == REQ_TREE) {
             if (res == RESULT_OK && d != null && d.getData() != null) {
-                try { getContentResolver().takePersistableUriPermission(d.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+                try { getContentResolver().takePersistableUriPermission(d.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); }
+                catch (Exception e1) {
+                    try { getContentResolver().takePersistableUriPermission(d.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+                }
                 sp.edit().putString("tree", d.getData().toString()).apply();
-                openNextVolume();
+                if (treeFor == 1) openFm(); else openNextVolume();
             }
             return;
         }
@@ -1016,6 +1116,10 @@ public class MainActivity extends Activity {
         open.setText("TXT 파일 열기");
         open.setOnClickListener(v -> pick());
         settingsBody.addView(open, new LinearLayout.LayoutParams(-1, -2));
+        Button fmb = new Button(this);
+        fmb.setText("파일 관리 (이동 · 삭제 · 이름 변경)");
+        fmb.setOnClickListener(v -> openFm());
+        settingsBody.addView(fmb, new LinearLayout.LayoutParams(-1, -2));
         if (!curName.isEmpty()) settingsBody.addView(label("현재: " + curName + " (" + curCharset + ")", 12, 0xFFAAAAAA));
 
         section("추천 테마");
@@ -1291,17 +1395,20 @@ public class MainActivity extends Activity {
         return (a.length() - i) - (b.length() - j);
     }
 
-    private void askTree() {
-        Toast.makeText(this, "책 파일들이 들어 있는 폴더를 한 번만 선택해 주세요", Toast.LENGTH_LONG).show();
+    private int treeFor = 0; // 0=다음권, 1=파일 관리
+
+    private void askTree(int forWhat) {
+        treeFor = forWhat;
+        Toast.makeText(this, forWhat == 1 ? "관리할 폴더를 선택해 주세요 (이동·삭제 허용 필요)" : "책 파일들이 들어 있는 폴더를 한 번만 선택해 주세요", Toast.LENGTH_LONG).show();
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(i, REQ_TREE);
     }
 
     /** 선택해 둔 폴더에서 현재 파일 다음 순서(숫자 순)의 TXT를 연다 */
     private void openNextVolume() {
         final String t = sp.getString("tree", null);
-        if (t == null) { askTree(); return; }
+        if (t == null) { askTree(0); return; }
         final String cur = curName;
         nextBtn.setEnabled(false);
         new Thread(() -> {
@@ -1333,10 +1440,237 @@ public class MainActivity extends Activity {
             ui.post(() -> {
                 nextBtn.setEnabled(true);
                 if (fn != null) open(fn);
-                else if (nt) { Toast.makeText(this, "현재 파일이 선택한 폴더에 없어요. 폴더를 다시 선택해 주세요", Toast.LENGTH_LONG).show(); askTree(); }
+                else if (nt) { Toast.makeText(this, "현재 파일이 선택한 폴더에 없어요. 폴더를 다시 선택해 주세요", Toast.LENGTH_LONG).show(); askTree(0); }
                 else if (fe != null) Toast.makeText(this, fe, Toast.LENGTH_LONG).show();
             });
         }).start();
+    }
+
+    // ───────────────────────── 파일 관리 ─────────────────────────
+    private static String fmtSize(long b) {
+        if (b < 1024) return b + "B";
+        if (b < 1024 * 1024) return (b / 1024) + "KB";
+        return String.format(Locale.US, "%.1fMB", b / 1048576.0);
+    }
+
+    private Uri docUri(String id) { return DocumentsContract.buildDocumentUriUsingTree(fmTree, id); }
+
+    private boolean hasWrite(Uri tree) {
+        try {
+            for (android.content.UriPermission up : getContentResolver().getPersistedUriPermissions())
+                if (up.getUri().equals(tree) && up.isWritePermission()) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private void openFm() {
+        setMenu(false);
+        String t = sp.getString("tree", null);
+        if (t == null || !hasWrite(Uri.parse(t))) { askTree(1); return; }
+        fmTree = Uri.parse(t);
+        fmStackIds.clear(); fmStackNames.clear();
+        fmMoving = false; fmMoveSrc = null;
+        try { fmDirId = DocumentsContract.getTreeDocumentId(fmTree); } catch (Exception e) { askTree(1); return; }
+        fmPanel.setVisibility(View.VISIBLE);
+        fmLoad();
+    }
+
+    private void fmClose() {
+        fmMoving = false; fmMoveSrc = null;
+        fmPanel.setVisibility(View.GONE);
+    }
+
+    private void fmBack() {
+        if (!fmStackIds.isEmpty()) fmUp(); else fmClose();
+    }
+
+    private void fmUp() {
+        if (fmStackIds.isEmpty()) { Toast.makeText(this, "선택한 폴더의 맨 위예요", Toast.LENGTH_SHORT).show(); return; }
+        fmDirId = fmStackIds.remove(fmStackIds.size() - 1);
+        fmStackNames.remove(fmStackNames.size() - 1);
+        fmLoad();
+    }
+
+    private void fmLoad() {
+        final String dirId = fmDirId;
+        final Uri tree = fmTree;
+        StringBuilder sb = new StringBuilder("/");
+        for (String n : fmStackNames) sb.append(n).append("/");
+        fmPath.setText(sb.toString());
+        new Thread(() -> {
+            ArrayList<Fe> list = new ArrayList<>();
+            String err = null;
+            try {
+                Uri kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId);
+                try (Cursor c = getContentResolver().query(kids, new String[]{
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                        DocumentsContract.Document.COLUMN_MIME_TYPE,
+                        DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
+                    while (c != null && c.moveToNext()) {
+                        Fe e = new Fe();
+                        e.id = c.getString(0); e.name = c.getString(1) == null ? "?" : c.getString(1);
+                        e.mime = c.getString(2); e.size = c.isNull(3) ? 0 : c.getLong(3);
+                        e.dir = DocumentsContract.Document.MIME_TYPE_DIR.equals(e.mime);
+                        list.add(e);
+                    }
+                }
+                Collections.sort(list, (x, y) -> x.dir != y.dir ? (x.dir ? -1 : 1) : natCmp(x.name, y.name));
+            } catch (Exception e) { err = e.getMessage(); }
+            final String fe = err;
+            ui.post(() -> {
+                if (!dirId.equals(fmDirId)) return;
+                if (fe != null) Toast.makeText(this, "목록을 읽지 못했어요: " + fe, Toast.LENGTH_LONG).show();
+                fmItems = list;
+                fmAdapter.notifyDataSetChanged();
+                updateFmBottom();
+            });
+        }).start();
+    }
+
+    private void fmClick(Fe e) {
+        if (e.dir) {
+            fmStackIds.add(fmDirId);
+            fmStackNames.add(e.name);
+            fmDirId = e.id;
+            fmLoad();
+        } else if (e.name.toLowerCase(Locale.ROOT).endsWith(".txt")) {
+            fmClose();
+            settingsPanel.setVisibility(View.GONE);
+            closeSearch();
+            setMenu(false);
+            open(docUri(e.id));
+        } else {
+            Toast.makeText(this, "TXT 파일만 열 수 있어요", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private ArrayList<Fe> fmSelected() {
+        ArrayList<Fe> r = new ArrayList<>();
+        for (Fe e : fmItems) if (e.sel) r.add(e);
+        return r;
+    }
+
+    private Button fmBtn(String t, View.OnClickListener l) {
+        Button b = new Button(this);
+        b.setText(t);
+        b.setAllCaps(false);
+        b.setOnClickListener(l);
+        fmBottom.addView(b, new LinearLayout.LayoutParams(0, -2, 1f));
+        return b;
+    }
+
+    private void updateFmBottom() {
+        fmBottom.removeAllViews();
+        int n = fmSelected().size();
+        if (fmMoving) {
+            fmInfo.setText(fmMoveSrc.size() + "개를 이동 중이에요. 옮길 폴더로 들어간 뒤 '여기로 이동'을 누르세요.");
+            fmBtn("여기로 이동", v -> fmMoveHere());
+            fmBtn("이동 취소", v -> { fmMoving = false; fmMoveSrc = null; updateFmBottom(); });
+        } else if (n > 0) {
+            fmInfo.setText(n + "개 선택됨");
+            fmBtn("이동", v -> { fmMoveSrc = fmSelected(); fmMoveSrcDir = fmDirId; fmMoving = true; for (Fe e : fmItems) e.sel = false; fmAdapter.notifyDataSetChanged(); updateFmBottom(); });
+            fmBtn("삭제", v -> fmDelete());
+            if (n == 1) fmBtn("이름 변경", v -> fmRename());
+            fmBtn("선택 해제", v -> { for (Fe e : fmItems) e.sel = false; fmAdapter.notifyDataSetChanged(); updateFmBottom(); });
+        } else {
+            fmInfo.setText(fmItems.isEmpty() ? "비어 있는 폴더예요" : "왼쪽 체크박스로 선택하면 이동·삭제할 수 있어요");
+        }
+    }
+
+    private void fmMoveHere() {
+        final ArrayList<Fe> src = fmMoveSrc;
+        final String srcDir = fmMoveSrcDir, dst = fmDirId;
+        if (src == null) return;
+        if (srcDir.equals(dst)) { Toast.makeText(this, "같은 폴더예요. 다른 폴더로 들어가 주세요", Toast.LENGTH_SHORT).show(); return; }
+        new Thread(() -> {
+            int ok = 0, fail = 0;
+            Uri sp0 = docUri(srcDir), dp0 = docUri(dst);
+            for (Fe e : src) {
+                boolean done = false;
+                try {
+                    Uri r = DocumentsContract.moveDocument(getContentResolver(), docUri(e.id), sp0, dp0);
+                    done = r != null;
+                } catch (Exception ex) { done = false; }
+                if (!done && !e.dir) {
+                    try {   // 이동을 지원하지 않는 저장소: 복사 후 원본 삭제
+                        Uri nu = DocumentsContract.createDocument(getContentResolver(), dp0, e.mime == null ? "text/plain" : e.mime, e.name);
+                        if (nu != null) {
+                            try (InputStream in = getContentResolver().openInputStream(docUri(e.id));
+                                 java.io.OutputStream out = getContentResolver().openOutputStream(nu)) {
+                                byte[] buf = new byte[65536]; int n;
+                                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                            }
+                            done = DocumentsContract.deleteDocument(getContentResolver(), docUri(e.id));
+                        }
+                    } catch (Exception ex) { done = false; }
+                }
+                if (done) ok++; else fail++;
+            }
+            final int fo = ok, ff = fail;
+            ui.post(() -> {
+                fmMoving = false; fmMoveSrc = null;
+                Toast.makeText(this, fo + "개 이동" + (ff > 0 ? ", " + ff + "개 실패" : ""), Toast.LENGTH_LONG).show();
+                fmLoad();
+            });
+        }).start();
+    }
+
+    private void fmDelete() {
+        final ArrayList<Fe> sel = fmSelected();
+        if (sel.isEmpty()) return;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("삭제할까요?")
+                .setMessage("선택한 " + sel.size() + "개를 삭제합니다.\n휴지통 없이 바로 영구 삭제되어 되돌릴 수 없어요."
+                        + (sel.size() == 1 ? "\n\n" + sel.get(0).name : ""))
+                .setPositiveButton("삭제", (d, w) -> new Thread(() -> {
+                    int ok = 0, fail = 0;
+                    for (Fe e : sel) {
+                        try { if (DocumentsContract.deleteDocument(getContentResolver(), docUri(e.id))) ok++; else fail++; }
+                        catch (Exception ex) { fail++; }
+                    }
+                    final int fo = ok, ff = fail;
+                    ui.post(() -> {
+                        Toast.makeText(this, fo + "개 삭제" + (ff > 0 ? ", " + ff + "개 실패" : ""), Toast.LENGTH_LONG).show();
+                        fmLoad();
+                    });
+                }).start())
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void fmAskName(String title, String init, java.util.function.Consumer<String> cb) {
+        final EditText et = new EditText(this);
+        et.setSingleLine(true);
+        et.setText(init);
+        et.setSelection(init.length());
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(et)
+                .setPositiveButton("확인", (d, w) -> { String v = et.getText().toString().trim(); if (!v.isEmpty()) cb.accept(v); })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void fmRename() {
+        final ArrayList<Fe> sel = fmSelected();
+        if (sel.size() != 1) return;
+        final Fe e = sel.get(0);
+        fmAskName("이름 변경", e.name, nm -> new Thread(() -> {
+            boolean ok;
+            try { ok = DocumentsContract.renameDocument(getContentResolver(), docUri(e.id), nm) != null; } catch (Exception ex) { ok = false; }
+            final boolean fo = ok;
+            ui.post(() -> { if (!fo) Toast.makeText(this, "이름을 바꾸지 못했어요", Toast.LENGTH_LONG).show(); fmLoad(); });
+        }).start());
+    }
+
+    private void fmNewFolder() {
+        fmAskName("새 폴더", "", nm -> new Thread(() -> {
+            boolean ok;
+            try { ok = DocumentsContract.createDocument(getContentResolver(), docUri(fmDirId), DocumentsContract.Document.MIME_TYPE_DIR, nm) != null; } catch (Exception ex) { ok = false; }
+            final boolean fo = ok;
+            ui.post(() -> { if (!fo) Toast.makeText(this, "폴더를 만들지 못했어요", Toast.LENGTH_LONG).show(); fmLoad(); });
+        }).start());
     }
 
     // ───────────────────────── 업데이트 ─────────────────────────
