@@ -231,7 +231,7 @@ final class SyncUi {
         c.addView(Ui.text(a, "로그인: " + Store.getS("email", ""), 15, th.fg, true));
         String cid = Sync.cid(), partner = Sync.partner();
         if (cid.isEmpty()) {
-            TextView ex = Ui.text(a, "배우자·가족과 연결해 보세요. 한 명이 코드를 만들고, 다른 사람이 그 코드를 입력해요. 코드를 입력하는 사람이 배우자(사내 부부)인지 가족인지 골라요.", 12, th.sub, false);
+            TextView ex = Ui.text(a, "배우자·가족과 연결해 보세요. 한 명이 코드를 만들고, 다른 사람이 그 코드를 입력해요. 코드를 입력하는 사람이 배우자(사내 부부)인지 가족인지 골라요.\n연결하면 근태는 자동으로, 메모는 '공유'를 켠 것만 서로 보여요.", 12, th.sub, false);
             ex.setPadding(0, dp(2), 0, dp(10));
             c.addView(ex);
             LinearLayout row = new LinearLayout(a);
@@ -268,6 +268,9 @@ final class SyncUi {
                 })));
                 c.addView(rl);
             }
+            TextView share = Ui.text(a, "무엇이 공유되나요?\n· 근태 기록·잔여는 자동으로 서로 보여요.\n· 메모는 쓸 때 '공유'를 켠 것만 보여요. (기본 꺼짐)\n· 게시판은 모든 사용자에게 공개돼요.", 12, th.sub, false);
+            share.setPadding(0, dp(10), 0, dp(2));
+            c.addView(share);
             TextView ex = Ui.text(a, "초대 코드 (입력하는 사람이 배우자 또는 가족을 골라요. 최대 " + Sync.MAX_MEMBERS + "명)", 12, th.sub, false);
             ex.setPadding(0, dp(8), 0, dp(4));
             c.addView(ex);
