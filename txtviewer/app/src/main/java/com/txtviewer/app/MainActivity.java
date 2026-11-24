@@ -597,7 +597,7 @@ public class MainActivity extends Activity {
         }
         final boolean right = x > pv.getWidth() / 2f;
         pendingTap = () -> { pendingTap = null; turn(right ? 1 : -1); };
-        ui.postDelayed(pendingTap, 260);
+        ui.postDelayed(pendingTap, 210);
     }
 
     private void showPage(boolean save) {
@@ -801,7 +801,7 @@ public class MainActivity extends Activity {
         void startFlip(Bitmap from, Bitmap to, int dir) {
             bFrom = from; bTo = to; animDir = dir; animT = 0f; animating = true;
             va = ValueAnimator.ofFloat(0f, 1f);
-            va.setDuration(360);
+            va.setDuration(200);
             va.setInterpolator(new AccelerateDecelerateInterpolator());
             va.addUpdateListener(a -> { animT = (float) a.getAnimatedValue(); invalidate(); });
             va.addListener(new AnimatorListenerAdapter() {
