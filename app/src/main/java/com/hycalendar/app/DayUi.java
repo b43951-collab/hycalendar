@@ -158,8 +158,9 @@ final class DayUi {
             e.setPadding(dp(4), dp(8), 0, 0);
             box.addView(e);
         }
+        final List<View> rows = new ArrayList<>();
         for (Memos.Memo m : list) {
-            box.addView(memoRow(m, true, v -> { if (!Memos.mine(m)) { toast("작성자만 삭제할 수 있어요"); return; } new android.app.AlertDialog.Builder(act)
+            View mr = memoRow(m, true, v -> { if (!Memos.mine(m)) { toast("작성자만 삭제할 수 있어요"); return; } new android.app.AlertDialog.Builder(act)
                     .setTitle("메모 삭제")
                     .setMessage("이 메모를 삭제할까요?\n" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text))
                     .setPositiveButton("삭제", (x, w) -> {
@@ -167,8 +168,79 @@ final class DayUi {
                         Alarms.schedule(act);
                         changed.run();
                         render();
-                    }).setNegativeButton("취소", null).show(); }));
+                    }).setNegativeButton("취소", null).show(); });
+            rows.add(mr);
+            box.addView(mr);
         }
+        if (list.size() > 1) for (int i = 0; i < rows.size(); i++) attachReorder(rows, i, list);
+    }
+
+    // ---- 메모 길게 눌러 위아래로 옮기기 ----
+    private float dragLastY, dragStartY;
+    private boolean dragging;
+
+    private void attachReorder(final List<View> rows, final int idx, final List<Memos.Memo> list) {
+        final View row = rows.get(idx);
+        final float gap = dp(8);
+        row.setOnTouchListener((v, e) -> {
+            if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) dragLastY = e.getRawY();
+            if (!dragging) return false;
+            float dy = e.getRawY() - dragStartY;
+            switch (e.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_MOVE: {
+                    row.setTranslationY(dy);
+                    int t = dropIndex(rows, idx, dy);
+                    float slot = row.getHeight() + gap;
+                    for (int j = 0; j < rows.size(); j++) {
+                        if (j == idx) continue;
+                        float shift = 0;
+                        if (t > idx && j > idx && j <= t) shift = -slot;
+                        else if (t < idx && j >= t && j < idx) shift = slot;
+                        rows.get(j).setTranslationY(shift);
+                    }
+                    return true;
+                }
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL: {
+                    dragging = false;
+                    row.getParent().requestDisallowInterceptTouchEvent(false);
+                    int t = e.getActionMasked() == android.view.MotionEvent.ACTION_UP ? dropIndex(rows, idx, dy) : idx;
+                    for (View r : rows) { r.setTranslationY(0); r.setScaleX(1f); r.setScaleY(1f); r.setAlpha(1f); r.setTranslationZ(0f); }
+                    if (t != idx) {
+                        List<Memos.Memo> nl = new ArrayList<>(list);
+                        nl.add(t, nl.remove(idx));
+                        List<String> ids = new ArrayList<>();
+                        for (Memos.Memo m : nl) ids.add(m.id);
+                        Memos.setOrder(ids);
+                        changed.run();
+                    }
+                    render();
+                    return true;
+                }
+            }
+            return true;
+        });
+        row.setOnLongClickListener(v -> {
+            dragging = true;
+            dragStartY = dragLastY;
+            row.getParent().requestDisallowInterceptTouchEvent(true);
+            row.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            row.setScaleX(1.03f); row.setScaleY(1.03f); row.setAlpha(0.92f); row.setTranslationZ(dp(8));
+            return true;
+        });
+    }
+
+    /** 끌고 있는 줄의 중심이 다른 줄들의 중심을 몇 개 넘었는지로 놓을 위치를 계산 */
+    private int dropIndex(List<View> rows, int idx, float dy) {
+        View d = rows.get(idx);
+        float c = d.getTop() + d.getHeight() / 2f + dy;
+        int t = 0;
+        for (int j = 0; j < rows.size(); j++) {
+            if (j == idx) continue;
+            View r = rows.get(j);
+            if (r.getTop() + r.getHeight() / 2f < c) t++;
+        }
+        return t;
     }
 
     private View memoRow(Memos.Memo m, boolean showDate) { return memoRow(m, showDate, null); }

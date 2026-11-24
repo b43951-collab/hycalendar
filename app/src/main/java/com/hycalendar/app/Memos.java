@@ -36,7 +36,35 @@ final class Memos {
 
     private static List<Memo> cache;
 
-    static synchronized void reset() { cache = null; }
+    static synchronized void reset() { cache = null; ords = null; }
+
+    // ---- 사용자가 직접 정한 표시 순서 (이 기기에만 저장, 서버 공유 안 함) ----
+    private static Map<String, Integer> ords;
+
+    private static synchronized Map<String, Integer> ords() {
+        if (ords == null) {
+            ords = new java.util.HashMap<>();
+            try {
+                JSONObject o = new JSONObject(Store.prefs().getString("memo_ord", "{}"));
+                java.util.Iterator<String> it = o.keys();
+                while (it.hasNext()) { String k = it.next(); ords.put(k, o.optInt(k, 0)); }
+            } catch (Exception ignored) { }
+        }
+        return ords;
+    }
+
+    /** 한 날짜의 메모를 이 순서(위→아래)로 고정한다. 달력·위젯도 같은 순서를 쓴다. */
+    static synchronized void setOrder(List<String> ids) {
+        Map<String, Integer> m = ords();
+        for (int i = 0; i < ids.size(); i++) m.put(ids.get(i), i + 1);
+        persistOrd();
+    }
+
+    private static void persistOrd() {
+        JSONObject o = new JSONObject();
+        try { for (Map.Entry<String, Integer> e : ords().entrySet()) o.put(e.getKey(), e.getValue()); } catch (Exception ignored) { }
+        Store.prefs().edit().putString("memo_ord", o.toString()).apply();
+    }
 
     static synchronized List<Memo> all() {
         if (cache == null) load();
@@ -203,7 +231,14 @@ final class Memos {
     static List<Memo> forDate(LocalDate d) {
         List<Memo> r = new ArrayList<>();
         for (Memo m : all()) if (applies(m, d)) r.add(m);
-        Collections.sort(r, (a, b) -> Boolean.compare(b.repeats(), a.repeats()));  // 반복 메모가 항상 맨 위 (나머지 순서는 유지)
+        final Map<String, Integer> od = ords();
+        // 직접 정한 순서가 있으면 그 순서 우선, 없는 메모는 그 아래에서 반복 메모 먼저 (나머지 순서는 유지)
+        Collections.sort(r, (a, b) -> {
+            int oa = od.containsKey(a.id) ? od.get(a.id) : Integer.MAX_VALUE;
+            int ob = od.containsKey(b.id) ? od.get(b.id) : Integer.MAX_VALUE;
+            if (oa != ob) return Integer.compare(oa, ob);
+            return Boolean.compare(b.repeats(), a.repeats());
+        });
         return r;
     }
 
