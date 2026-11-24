@@ -589,7 +589,16 @@ public class MainActivity extends Activity {
 
         box.addView(Ui.sectionTitle(this, th, "앱 업데이트"));
         LinearLayout uc = Ui.card(this, th);
-        uc.addView(Ui.text(this, "현재 버전 v" + Updater.currentName(this), 15, th.fg, true));
+        TextView verTv = Ui.text(this, "현재 버전 v" + Updater.currentName(this) + (Updater.beta() ? "  · 시험 버전 받는 중" : ""), 15, th.fg, true);
+        // 숨은 기능: 버전 글자를 길게 누르면 시험 버전 받기가 켜지고 꺼진다 (개발자용)
+        verTv.setOnLongClickListener(v -> {
+            boolean on = !Updater.beta();
+            Store.putB("beta_upd", on);
+            toast(on ? "시험 버전 받기를 켰어요" : "시험 버전 받기를 껐어요");
+            refreshSettings();
+            return true;
+        });
+        uc.addView(verTv);
         uc.addView(Ui.btn(this, th, "업데이트 확인", false, v -> {
             toast("확인 중…");
             Updater.check(this, (newer, ver, url, err) -> {

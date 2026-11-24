@@ -29,7 +29,10 @@ import java.util.regex.Pattern;
 final class Updater {
     private Updater() {}
 
-    private static final String API = "https://api.github.com/repos/b43951-collab/hycalendar/releases/tags/latest";
+    private static final String API_BASE = "https://api.github.com/repos/b43951-collab/hycalendar/releases/tags/";
+
+    /** 시험 버전 받기가 켜져 있으면 'beta', 아니면 모두에게 나가는 'latest'를 확인한다 */
+    static boolean beta() { return Store.getB("beta_upd", false); }
     private static final Handler UI = new Handler(Looper.getMainLooper());
 
     interface Result { void run(boolean newer, String ver, String url, String err); }
@@ -47,11 +50,12 @@ final class Updater {
 
     static void check(Activity a, Result cb) {
         final int cur = currentCode(a);
+        final String api = API_BASE + (beta() ? "beta" : "latest");
         new Thread(() -> {
             String err = null, url = null, ver = "";
             boolean newer = false;
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(API).openConnection();
+                HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
                 c.setConnectTimeout(8000);
                 c.setReadTimeout(8000);
                 c.setRequestProperty("Accept", "application/vnd.github+json");
