@@ -3,7 +3,15 @@ package com.txtviewer.app;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Shader;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -83,7 +91,7 @@ public class MainActivity extends Activity {
     private int spacing10;      // 줄 간격 x10
     private int marginH, marginV; // dp
     private int font;
-    private boolean showNum, volKeys;
+    private boolean showNum, volKeys, animOn;
 
     // 본문/페이지
     private String text = "";
@@ -261,13 +269,14 @@ public class MainActivity extends Activity {
         font = sp.getInt("font", 0);
         showNum = sp.getBoolean("num", true);
         volKeys = sp.getBoolean("vol", true);
+        animOn = sp.getBoolean("anim", true);
     }
 
     private void savePrefs() {
         sp.edit().putInt("theme", theme).putInt("cbg", customBg).putInt("cfg", customFg)
                 .putFloat("size", sizeSp).putInt("spacing", spacing10).putInt("mh", marginH)
                 .putInt("mv", marginV).putInt("font", font).putBoolean("num", showNum)
-                .putBoolean("vol", volKeys).apply();
+                .putBoolean("vol", volKeys).putBoolean("anim", animOn).apply();
     }
 
     private int bgColor() { return theme >= 0 ? T_BG[theme] : customBg; }
@@ -466,6 +475,17 @@ public class MainActivity extends Activity {
         int n = curPage + d;
         if (n < 0) { Toast.makeText(this, "첫 페이지예요", Toast.LENGTH_SHORT).show(); return; }
         if (n >= pageCount) { Toast.makeText(this, "마지막 페이지예요", Toast.LENGTH_SHORT).show(); return; }
+        if (animOn && pv.canAnimate()) {
+            try {
+                pv.finishAnim();
+                Bitmap from = pv.snapshot();
+                curPage = n;
+                showPage(true);
+                Bitmap to = pv.snapshot();
+                pv.startFlip(from, to, d);
+                return;
+            } catch (Throwable t) { pv.finishAnim(); }
+        }
         curPage = n;
         showPage(true);
     }
@@ -633,6 +653,7 @@ public class MainActivity extends Activity {
 
         @Override
         protected void onDraw(Canvas c) {
+            if (animating && bFrom != null && bTo != null) { drawFlip(c); return; }
             c.drawColor(bgColor());
             if (text.isEmpty() || paginating || layout == null) {
                 TextPaint p = newPaint();
@@ -645,16 +666,98 @@ public class MainActivity extends Activity {
                 }
                 return;
             }
+            drawContent(c, layout, curPage);
+        }
+
+        void drawContent(Canvas c, StaticLayout lay, int page) {
+            c.drawColor(bgColor());
             c.save();
             c.translate(dp(marginH), topPad());
             c.clipRect(0, 0, textW(), textH());
-            layout.draw(c);
+            lay.draw(c);
             c.restore();
             if (showNum && pageCount > 0) {
                 foot.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11, getResources().getDisplayMetrics()));
                 foot.setColor((fgColor() & 0x00FFFFFF) | 0x88000000);
                 foot.setTextAlign(android.graphics.Paint.Align.CENTER);
-                c.drawText((curPage + 1) + " / " + pageCount, getWidth() / 2f, getHeight() - dp(marginV) + dp(6), foot);
+                c.drawText((page + 1) + " / " + pageCount, getWidth() / 2f, getHeight() - dp(marginV) + dp(6), foot);
+            }
+        }
+
+        // ── 책 넘김 효과: 책등(왼쪽)을 축으로 페이지가 접히며 넘어간다 ──
+        boolean animating;
+        private float animT;
+        private int animDir;
+        private Bitmap bFrom, bTo;
+        private ValueAnimator va;
+        private final Paint bp = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private final Paint shp = new Paint();
+        private final Paint dk = new Paint();
+
+        boolean canAnimate() { return getWidth() > 0 && getHeight() > 0 && layout != null && !text.isEmpty() && !paginating; }
+
+        Bitmap snapshot() {
+            Bitmap b = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
+            drawContent(new Canvas(b), layout, curPage);
+            return b;
+        }
+
+        void startFlip(Bitmap from, Bitmap to, int dir) {
+            bFrom = from; bTo = to; animDir = dir; animT = 0f; animating = true;
+            va = ValueAnimator.ofFloat(0f, 1f);
+            va.setDuration(360);
+            va.setInterpolator(new AccelerateDecelerateInterpolator());
+            va.addUpdateListener(a -> { animT = (float) a.getAnimatedValue(); invalidate(); });
+            va.addListener(new AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(Animator an) { endAnim(); }
+                @Override public void onAnimationCancel(Animator an) { endAnim(); }
+            });
+            va.start();
+        }
+
+        void finishAnim() {
+            if (va != null && va.isRunning()) va.end();
+            else endAnim();
+        }
+
+        private void endAnim() {
+            animating = false;
+            va = null;
+            if (bFrom != null) { bFrom.recycle(); bFrom = null; }
+            if (bTo != null) { bTo.recycle(); bTo = null; }
+            invalidate();
+        }
+
+        private void shadow(Canvas c, float edge, int alpha) {
+            if (alpha <= 0) return;
+            float w = dp(34);
+            shp.setShader(new LinearGradient(edge, 0, edge + w, 0, Color.argb(alpha, 0, 0, 0), 0, Shader.TileMode.CLAMP));
+            c.drawRect(edge, 0, Math.min(getWidth(), edge + w), getHeight(), shp);
+        }
+
+        private void drawFlip(Canvas c) {
+            float t = animT;
+            int W = getWidth(), H = getHeight();
+            if (animDir > 0) {
+                // 다음: 새 페이지가 아래에 있고, 현재 페이지가 왼쪽으로 접혀 들어감
+                c.drawBitmap(bTo, 0, 0, bp);
+                shadow(c, W * (1 - t), (int) (110 * (1 - t)));
+                c.save();
+                c.scale(1 - t, 1f, 0f, 0f);
+                c.drawBitmap(bFrom, 0, 0, bp);
+                dk.setColor(Color.argb((int) (70 * t), 0, 0, 0));
+                c.drawRect(0, 0, W, H, dk);
+                c.restore();
+            } else {
+                // 이전: 현재 페이지가 아래에 있고, 이전 페이지가 책등에서 펼쳐짐
+                c.drawBitmap(bFrom, 0, 0, bp);
+                shadow(c, W * t, (int) (110 * t));
+                c.save();
+                c.scale(t, 1f, 0f, 0f);
+                c.drawBitmap(bTo, 0, 0, bp);
+                dk.setColor(Color.argb((int) (70 * (1 - t)), 0, 0, 0));
+                c.drawRect(0, 0, W, H, dk);
+                c.restore();
             }
         }
 
@@ -807,7 +910,7 @@ public class MainActivity extends Activity {
     private void openSettings() {
         setMenu(false);
         layoutDirty = false;
-        snapI = new int[]{theme, customBg, customFg, spacing10, marginH, marginV, font, showNum ? 1 : 0, volKeys ? 1 : 0};
+        snapI = new int[]{theme, customBg, customFg, spacing10, marginH, marginV, font, showNum ? 1 : 0, volKeys ? 1 : 0, animOn ? 1 : 0};
         snapSize = sizeSp;
         fillSettings();
         settingsScroll.scrollTo(0, 0);
@@ -818,7 +921,7 @@ public class MainActivity extends Activity {
     private void closeSettings(boolean save) {
         if (!save && snapI != null) {
             theme = snapI[0]; customBg = snapI[1]; customFg = snapI[2]; spacing10 = snapI[3];
-            marginH = snapI[4]; marginV = snapI[5]; font = snapI[6]; showNum = snapI[7] == 1; volKeys = snapI[8] == 1;
+            marginH = snapI[4]; marginV = snapI[5]; font = snapI[6]; showNum = snapI[7] == 1; volKeys = snapI[8] == 1; animOn = snapI[9] == 1;
             sizeSp = snapSize;
             layoutDirty = false;
         }
@@ -969,6 +1072,12 @@ public class MainActivity extends Activity {
         cv.setChecked(volKeys);
         cv.setOnCheckedChangeListener((b, c) -> { volKeys = c; savePrefs(); });
         settingsBody.addView(cv);
+        CheckBox ca = new CheckBox(this);
+        ca.setText("책 넘기는 효과");
+        ca.setTextColor(Color.WHITE);
+        ca.setChecked(animOn);
+        ca.setOnCheckedChangeListener((b, c) -> { animOn = c; savePrefs(); });
+        settingsBody.addView(ca);
         settingsBody.addView(label("화면 밝기는 휴대폰 밝기를 그대로 따라갑니다.", 12, 0xFFAAAAAA));
 
         section("앱");
