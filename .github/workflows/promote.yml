@@ -1,0 +1,79 @@
+name: Scheduled release (beta -> latest)
+
+# 정해진 날짜에 '시험(beta) 빌드'를 그대로 공식(latest)으로 올린다. 시험 때 확인한 APK 그대로 올라간다.
+# - 자동 실행: 2026-12-04 09:00 (한국 시간). cron은 해마다 돌지만 아래 날짜 확인으로 이날만 게시한다.
+# - 취소하려면 이 파일을 지우거나 Actions 탭에서 이 워크플로를 Disable 한다.
+# - 수동 실행(dry_run=true)은 게시하지 않고 점검만 한다. dest를 바꾸면 그 태그로 시험 게시한다.
+on:
+  schedule:
+    - cron: '0 0 4 12 *'   # UTC 00:00 = 한국 09:00
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '점검만 하고 게시하지 않음 (true/false)'
+        default: 'true'
+      dest:
+        description: '게시할 태그 (평소 latest, 시험은 promote-test)'
+        default: 'latest'
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: beta를 공식으로 게시
+        env:
+          EVENT: ${{ github.event_name }}
+          IN_DRY: ${{ inputs.dry_run }}
+          IN_DEST: ${{ inputs.dest }}
+        run: |
+          set -e
+          DRY=true; DEST=latest
+          if [ "$EVENT" = "schedule" ]; then
+            if [ "$(TZ=Asia/Seoul date +%F)" != "2026-12-04" ]; then echo "오늘은 배포일(2026-12-04)이 아니라서 건너뜀"; exit 0; fi
+            DRY=false
+          else
+            DRY="${IN_DRY:-true}"; DEST="${IN_DEST:-latest}"
+          fi
+          echo "dry_run=$DRY dest=$DEST"
+
+          BODY=$(gh api repos/$GITHUB_REPOSITORY/releases/tags/beta --jq .body)
+          CODE=$(echo "$BODY" | grep -oP 'code \K[0-9]+')
+          VN=$(echo "$BODY" | grep -oP 'v\K[0-9]+(\.[0-9]+)*' | head -1)
+          [ -n "$CODE" ] || { echo "beta 릴리스에서 버전 번호를 못 읽음"; exit 1; }
+          echo "beta: v$VN code $CODE"
+
+          if [ "$DEST" = "latest" ]; then
+            LCODE=$(gh api repos/$GITHUB_REPOSITORY/releases/tags/latest --jq .body 2>/dev/null | grep -oP 'code \K[0-9]+' || true)
+            LCODE=${LCODE:-0}
+            echo "latest(현재 공식): code $LCODE"
+            if [ "$CODE" -le "$LCODE" ]; then echo "beta가 공식보다 새 버전이 아니라서 게시하지 않음"; exit 0; fi
+          fi
+
+          mkdir -p out
+          gh release download beta -p hycalendar.apk -D out --clobber
+          ls -l out
+          SHA=$(git rev-parse origin/beta)
+          if [ "$DRY" = "true" ]; then echo "점검만 했어요: 게시하지 않음"; exit 0; fi
+
+          gh release delete "$DEST" --yes --cleanup-tag || true
+          gh release create "$DEST" out/hycalendar.apk --title "최신 빌드" --notes "커밋 ${SHA::7} · v${VN} · code ${CODE}" --target "$SHA"
+          sleep 3
+          if [ "$DEST" = "latest" ]; then gh release edit latest --draft=false --latest; else gh release edit "$DEST" --draft=false; fi
+          gh api repos/$GITHUB_REPOSITORY/releases/tags/$DEST --jq '.draft' | grep -q false
+          echo "게시 완료: $DEST (v$VN code $CODE)"
+
+          # 소스도 beta와 맞춘다 (실패해도 게시는 이미 끝남)
+          if [ "$DEST" = "latest" ]; then
+            git config user.name "github-actions"; git config user.email "actions@github.com"
+            git checkout main
+            git merge origin/beta -m "공식 배포: beta를 main에 반영 (v${VN})" && git push origin main || echo "main 반영은 수동 확인 필요"
+          fi
