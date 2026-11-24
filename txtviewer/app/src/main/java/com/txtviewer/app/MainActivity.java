@@ -417,9 +417,8 @@ public class MainActivity extends Activity {
         quickCard.setPadding(dp(12), dp(12), dp(12), dp(12));
         quickCard.setClickable(true);
         quickBtn("텍스트 검색", () -> openSearch());
-        quickBtn("파일 관리", () -> openFm());
+        quickBtn("파일 열기 · 관리", () -> openFm());
         quickBtn("설정", () -> openSettings());
-        quickBtn("TXT 파일 열기", () -> pick());
         FrameLayout.LayoutParams ql = new FrameLayout.LayoutParams(dp(260), -2);
         ql.gravity = Gravity.CENTER;
         quickPanel.addView(quickCard, ql);
@@ -470,7 +469,7 @@ public class MainActivity extends Activity {
         LinearLayout ft = new LinearLayout(this);
         ft.setOrientation(LinearLayout.VERTICAL);
         TextView ftt = new TextView(this);
-        ftt.setText("파일 관리");
+        ftt.setText("파일 열기 · 관리");
         ftt.setTextColor(Color.WHITE);
         ftt.setTextSize(20);
         ft.addView(ftt);
@@ -864,7 +863,7 @@ public class MainActivity extends Activity {
                 case MotionEvent.ACTION_DOWN:
                     dx0 = e.getX(); dy0 = e.getY();
                     longFired = false;
-                    if (!text.isEmpty()) ui.postDelayed(lpRun, 550);
+                    ui.postDelayed(lpRun, 550);
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     if (Math.hypot(e.getX() - dx0, e.getY() - dy0) > dp(16)) ui.removeCallbacks(lpRun);
@@ -892,7 +891,7 @@ public class MainActivity extends Activity {
 
     // ───────────────────────── 파일 열기 ─────────────────────────
     private void showHelp() {
-        pv.msg = "화면을 빠르게 두 번 터치하면 메뉴가 나와요.\n\n메뉴 → 설정 → 파일 열기로 TXT를 선택하세요.\n\n· 오른쪽 터치: 다음 페이지\n· 왼쪽 터치: 이전 페이지";
+        pv.msg = "화면을 길게 누르면 간이 메뉴가 나와요.\n\n'파일 열기 · 관리'에서 폴더를 한 번 고르고, TXT를 눌러 읽으세요.\n\n· 빠르게 두 번 터치: 메뉴\n· 오른쪽 터치: 다음 페이지\n· 왼쪽 터치: 이전 페이지";
         pv.invalidate();
     }
 
@@ -1112,12 +1111,8 @@ public class MainActivity extends Activity {
         settingsBody.removeAllViews();
 
         section("파일");
-        Button open = new Button(this);
-        open.setText("TXT 파일 열기");
-        open.setOnClickListener(v -> pick());
-        settingsBody.addView(open, new LinearLayout.LayoutParams(-1, -2));
         Button fmb = new Button(this);
-        fmb.setText("파일 관리 (이동 · 삭제 · 이름 변경)");
+        fmb.setText("파일 열기 · 관리 (이동 · 삭제 · 이름 변경)");
         fmb.setOnClickListener(v -> openFm());
         settingsBody.addView(fmb, new LinearLayout.LayoutParams(-1, -2));
         if (!curName.isEmpty()) settingsBody.addView(label("현재: " + curName + " (" + curCharset + ")", 12, 0xFFAAAAAA));
