@@ -293,6 +293,13 @@ public class Alarms extends BroadcastReceiver {
         }
     }
 
+    private static final int MAX_ALARMS = 450;   // 안드로이드는 앱당 예약 500개까지만 허용 → 가까운 것부터 450개만 걸고, 울릴 때마다 다시 채운다
+
+    private static final class Trig {
+        long at; int code; Intent ex;
+        Trig(long at, int code, Intent ex) { this.at = at; this.code = code; this.ex = ex; }
+    }
+
     private static void doSchedule(Context c) {
         Store.init(c);
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
@@ -305,6 +312,7 @@ public class Alarms extends BroadcastReceiver {
             }
         }
         StringBuilder codes = new StringBuilder();
+        List<Trig> trigs = new ArrayList<>();
         LocalDate today = LocalDate.now();
         long now = System.currentTimeMillis();
         PendingIntent show = PendingIntent.getActivity(c, 0, new Intent(c, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
@@ -335,8 +343,7 @@ public class Alarms extends BroadcastReceiver {
                             .putExtra("text", it.cheer.isEmpty() ? d.getMonthValue() + "/" + d.getDayOfMonth() + "(" + dowN[d.getDayOfWeek().getValue() % 7] + ") " + shiftWord(d) + " · 출근 준비하세요" : it.cheer)
                             .putExtra("vib", it.vib).putExtra("sound", it.sound).putExtra("auto", it.autoOff)
                             .putExtra("more", times - 1 - k).putExtra("snz", it.snoozeMin).putExtra("shift", String.valueOf(Memos.cat(d)));
-                    setExact(am, at, show, pi(c, base + k, ex));
-                    codes.append(base + k).append(',');
+                    trigs.add(new Trig(at, base + k, ex));
                 }
             }
         }
@@ -353,9 +360,14 @@ public class Alarms extends BroadcastReceiver {
                 String body = (m.notifyDays == 1 ? "[내일] " : m.notifyDays == 7 ? "[일주일 뒤] " : "") + m.text.replace('\n', ' ');
                 Intent ex = new Intent().putExtra("kind", "memo").putExtra("nid", code)
                         .putExtra("title", m.label.isEmpty() ? "메모 알림" : m.label).putExtra("text", body);
-                setExact(am, at, show, pi(c, code, ex));
-                codes.append(code).append(',');
+                trigs.add(new Trig(at, code, ex));
             }
+        }
+        Collections.sort(trigs, (x, y) -> Long.compare(x.at, y.at));
+        for (int q = 0; q < trigs.size() && q < MAX_ALARMS; q++) {
+            Trig t = trigs.get(q);
+            setExact(am, t.at, show, pi(c, t.code, t.ex));
+            codes.append(t.code).append(',');
         }
         Store.putS("sched_codes", codes.length() > 0 ? codes.substring(0, codes.length() - 1) : "");
     }

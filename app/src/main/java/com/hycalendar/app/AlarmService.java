@@ -63,35 +63,42 @@ public class AlarmService extends Service {
             finishRing();
             return START_NOT_STICKY;
         }
+        // 안드로이드는 서비스를 시작하면 5초 안에 startForeground를 부르라고 요구한다 → 무엇보다 먼저 한다
+        silence();
+        base = i.getIntExtra("base", -1);
+        key = i.getStringExtra("key") == null ? "" : i.getStringExtra("key");
+        kIdx = i.getIntExtra("k", -1);
+        Intent act = new Intent(this, AlarmRingActivity.class);
+        if (i.getExtras() != null) act.putExtras(i.getExtras());
+        act.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         try {
-            Store.init(this);
-            Ui.init(this);
-            silence();
-            base = i.getIntExtra("base", -1);
-            key = i.getStringExtra("key") == null ? "" : i.getStringExtra("key");
-            kIdx = i.getIntExtra("k", -1);
-            Intent act = new Intent(this, AlarmRingActivity.class);
-            if (i.getExtras() != null) act.putExtras(i.getExtras());
-            act.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             Notification n = buildNotification(i, act);
             if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(NID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
             else startForeground(NID, n);
-            int auto = i.getIntExtra("auto", 0);
+        } catch (Throwable t) {
+            try {
+                NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                if (nm.getNotificationChannel(CH) == null) nm.createNotificationChannel(new NotificationChannel(CH, "알람 울림", NotificationManager.IMPORTANCE_HIGH));
+                startForeground(NID, new Notification.Builder(this, CH).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle("Hy캘린더 알람").build());
+            } catch (Throwable ignored) { }
+        }
+        // 이후 단계는 하나가 실패해도 나머지(소리·진동·화면)는 계속 진행한다
+        try { Store.init(this); } catch (Throwable ignored) { }
+        int auto = i.getIntExtra("auto", 0);
+        try {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (pm != null) {
                 wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "hycalendar:alarm");
                 wl.acquire((auto > 0 ? auto + 1 : 30) * 60000L);
             }
-            play(i.getStringExtra("sound"), i.getBooleanExtra("vib", true));
-            if (auto > 0) {
-                autoOff = this::finishRing;
-                h.postDelayed(autoOff, auto * 60000L);
-            }
-            // '다른 앱 위에 표시' 권한이 있으면 화면을 켜고 사용 중일 때도 알람 화면이 바로 뜬다
-            try { startActivity(act); } catch (Throwable ignored) { }
-        } catch (Throwable t) {
-            finishRing();
+        } catch (Throwable ignored) { }
+        try { play(i.getStringExtra("sound"), i.getBooleanExtra("vib", true)); } catch (Throwable ignored) { }
+        if (auto > 0) {
+            autoOff = this::finishRing;
+            h.postDelayed(autoOff, auto * 60000L);
         }
+        // '다른 앱 위에 표시' 권한이 있으면 화면을 켜고 사용 중일 때도 알람 화면이 바로 뜬다
+        try { startActivity(act); } catch (Throwable ignored) { }
         return START_NOT_STICKY;
     }
 
