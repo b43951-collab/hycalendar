@@ -131,18 +131,20 @@ public class Alarms extends BroadcastReceiver {
             for (int i = 0; i < cache.size(); i++) if (cache.get(i).id == it.id) { cache.set(i, it); found = true; }
             if (!found) cache.add(it);
         }
+        clearState(it.id);   // 시간·요일·켜짐을 바꾸면 오늘의 '종료/다시 울림' 기록을 지운다
         persist();
     }
 
     static synchronized void delete(int id) {
         if (cache == null) load();
         for (int i = 0; i < cache.size(); i++) if (cache.get(i).id == id) { cache.remove(i); break; }
+        clearState(id);
         persist();
     }
 
     static synchronized void setAll(boolean on) {
         if (cache == null) load();
-        for (Item it : cache) it.on = on;
+        for (Item it : cache) { it.on = on; clearState(it.id); }
         persist();
     }
 
@@ -251,6 +253,18 @@ public class Alarms extends BroadcastReceiver {
         }
         for (String k : drop) o.remove(k);
         Store.putS("al_state", o.toString());
+    }
+
+    static synchronized void clearState(int id) {
+        try {
+            JSONObject o = alState();
+            List<String> drop = new ArrayList<>();
+            java.util.Iterator<String> ks = o.keys();
+            while (ks.hasNext()) { String k = ks.next(); if (k.startsWith(id + "_")) drop.add(k); }
+            if (drop.isEmpty()) return;
+            for (String k : drop) o.remove(k);
+            saveAlState(o);
+        } catch (Exception ignored) { }
     }
 
     static synchronized void markStopped(String key) {

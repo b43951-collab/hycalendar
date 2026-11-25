@@ -10,8 +10,8 @@ android {
         applicationId 'com.hycalendar.app'
         minSdk 26
         targetSdk 34
-        versionCode 48
-        versionName '0.9.34'
+        versionCode 49
+        versionName '0.9.35'
     }
 
     signingConfigs {
