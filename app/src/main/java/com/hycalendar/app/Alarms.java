@@ -131,18 +131,20 @@ public class Alarms extends BroadcastReceiver {
             for (int i = 0; i < cache.size(); i++) if (cache.get(i).id == it.id) { cache.set(i, it); found = true; }
             if (!found) cache.add(it);
         }
+        clearState(it.id);   // 시간·요일·켜짐을 바꾸면 오늘의 '종료/다시 울림' 기록을 지운다
         persist();
     }
 
     static synchronized void delete(int id) {
         if (cache == null) load();
         for (int i = 0; i < cache.size(); i++) if (cache.get(i).id == id) { cache.remove(i); break; }
+        clearState(id);
         persist();
     }
 
     static synchronized void setAll(boolean on) {
         if (cache == null) load();
-        for (Item it : cache) it.on = on;
+        for (Item it : cache) { it.on = on; clearState(it.id); }
         persist();
     }
 
@@ -253,6 +255,18 @@ public class Alarms extends BroadcastReceiver {
         Store.putS("al_state", o.toString());
     }
 
+    static synchronized void clearState(int id) {
+        try {
+            JSONObject o = alState();
+            List<String> drop = new ArrayList<>();
+            java.util.Iterator<String> ks = o.keys();
+            while (ks.hasNext()) { String k = ks.next(); if (k.startsWith(id + "_")) drop.add(k); }
+            if (drop.isEmpty()) return;
+            for (String k : drop) o.remove(k);
+            saveAlState(o);
+        } catch (Exception ignored) { }
+    }
+
     static synchronized void markStopped(String key) {
         if (key == null || key.isEmpty()) return;
         try { JSONObject o = alState(); o.put(key, new JSONObject().put("s", 1)); saveAlState(o); } catch (Exception ignored) { }
@@ -279,6 +293,13 @@ public class Alarms extends BroadcastReceiver {
         }
     }
 
+    private static final int MAX_ALARMS = 450;   // 안드로이드는 앱당 예약 500개까지만 허용 → 가까운 것부터 450개만 걸고, 울릴 때마다 다시 채운다
+
+    private static final class Trig {
+        long at; int code; Intent ex;
+        Trig(long at, int code, Intent ex) { this.at = at; this.code = code; this.ex = ex; }
+    }
+
     private static void doSchedule(Context c) {
         Store.init(c);
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
@@ -291,6 +312,7 @@ public class Alarms extends BroadcastReceiver {
             }
         }
         StringBuilder codes = new StringBuilder();
+        List<Trig> trigs = new ArrayList<>();
         LocalDate today = LocalDate.now();
         long now = System.currentTimeMillis();
         PendingIntent show = PendingIntent.getActivity(c, 0, new Intent(c, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
@@ -321,8 +343,7 @@ public class Alarms extends BroadcastReceiver {
                             .putExtra("text", it.cheer.isEmpty() ? d.getMonthValue() + "/" + d.getDayOfMonth() + "(" + dowN[d.getDayOfWeek().getValue() % 7] + ") " + shiftWord(d) + " · 출근 준비하세요" : it.cheer)
                             .putExtra("vib", it.vib).putExtra("sound", it.sound).putExtra("auto", it.autoOff)
                             .putExtra("more", times - 1 - k).putExtra("snz", it.snoozeMin).putExtra("shift", String.valueOf(Memos.cat(d)));
-                    setExact(am, at, show, pi(c, base + k, ex));
-                    codes.append(base + k).append(',');
+                    trigs.add(new Trig(at, base + k, ex));
                 }
             }
         }
@@ -339,9 +360,14 @@ public class Alarms extends BroadcastReceiver {
                 String body = (m.notifyDays == 1 ? "[내일] " : m.notifyDays == 7 ? "[일주일 뒤] " : "") + m.text.replace('\n', ' ');
                 Intent ex = new Intent().putExtra("kind", "memo").putExtra("nid", code)
                         .putExtra("title", m.label.isEmpty() ? "메모 알림" : m.label).putExtra("text", body);
-                setExact(am, at, show, pi(c, code, ex));
-                codes.append(code).append(',');
+                trigs.add(new Trig(at, code, ex));
             }
+        }
+        Collections.sort(trigs, (x, y) -> Long.compare(x.at, y.at));
+        for (int q = 0; q < trigs.size() && q < MAX_ALARMS; q++) {
+            Trig t = trigs.get(q);
+            setExact(am, t.at, show, pi(c, t.code, t.ex));
+            codes.append(t.code).append(',');
         }
         Store.putS("sched_codes", codes.length() > 0 ? codes.substring(0, codes.length() - 1) : "");
     }
@@ -360,10 +386,12 @@ public class Alarms extends BroadcastReceiver {
             schedule(c);   // 울릴 때마다 앞으로 21일 치를 다시 채워서, 앱을 오래 안 열어도 알람이 끊기지 않게 한다
         } else if (ACTION_STOP.equals(a)) {
             stop(c, i);
+        } else if (Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(a)) {
+            schedule(c);   // 재부팅 직후 잠금을 풀기 전에도 알람부터 다시 건다 (위젯은 건드리지 않는다)
         } else {
             // 부팅·앱 업데이트·시간 변경 시 다시 예약
             schedule(c);
-            WidgetBase.updateAll(c);
+            try { WidgetBase.updateAll(c); } catch (Throwable ignored) { }
         }
     }
 

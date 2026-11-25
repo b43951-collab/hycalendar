@@ -45,6 +45,7 @@
         <activity
             android:name=".AlarmRingActivity"
             android:exported="false"
+            android:directBootAware="true"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:taskAffinity=""
@@ -55,6 +56,7 @@
         <service
             android:name=".AlarmService"
             android:exported="false"
+            android:directBootAware="true"
             android:foregroundServiceType="mediaPlayback" />
 
         <activity
@@ -89,10 +91,13 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_large" />
         </receiver>
 
-        <receiver android:name=".Alarms" android:exported="false">
+        <receiver android:name=".Alarms" android:exported="false" android:directBootAware="true">
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

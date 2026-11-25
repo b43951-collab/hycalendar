@@ -59,7 +59,9 @@ final class Updater {
                 c.setConnectTimeout(8000);
                 c.setReadTimeout(8000);
                 c.setRequestProperty("Accept", "application/vnd.github+json");
-                if (c.getResponseCode() != 200) throw new Exception("서버 응답 " + c.getResponseCode());
+                int rc = c.getResponseCode();
+                if (rc == 403 || rc == 429) throw new Exception("요청이 많아 잠시 막혔어요. 잠시 뒤 다시 눌러 주세요");
+                if (rc != 200) throw new Exception("서버 응답 " + rc);
                 StringBuilder sb = new StringBuilder();
                 try (InputStream in = c.getInputStream()) {
                     byte[] buf = new byte[4096]; int n;
@@ -128,6 +130,7 @@ final class Updater {
                         }
                     }
                 }
+                if (total > 0 && out.length() != total) throw new Exception("파일이 끝까지 받아지지 않았어요");
             } catch (Exception e) { err = e.getMessage(); }
             final String fe = err; final File fo = out;
             UI.post(() -> {
