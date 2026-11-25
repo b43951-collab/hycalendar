@@ -8,6 +8,8 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -128,32 +130,51 @@ public class AlarmService extends Service {
                 .build();
     }
 
+    private ToneGenerator tg;
+    private Runnable beeper;
+
+    private boolean tryPlay(Uri u, AudioAttributes aa) {
+        if (u == null) return false;
+        try {
+            mp = new MediaPlayer();
+            mp.setAudioAttributes(aa);
+            mp.setDataSource(this, u);
+            mp.setLooping(true);
+            mp.prepare();
+            mp.start();
+            return true;
+        } catch (Throwable e) {
+            try { if (mp != null) mp.release(); } catch (Throwable ignored) { }
+            mp = null;
+        }
+        try {
+            rt = RingtoneManager.getRingtone(this, u);
+            if (rt != null) {
+                rt.setAudioAttributes(aa);
+                if (android.os.Build.VERSION.SDK_INT >= 28) rt.setLooping(true);
+                rt.play();
+                if (rt.isPlaying()) return true;
+            }
+        } catch (Throwable ignored) { }
+        rt = null;
+        return false;
+    }
+
     private void play(String sound, boolean vibrate) {
         if (sound == null) sound = "";
         if (!"none".equals(sound)) {
-            Uri u = sound.isEmpty() ? RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) : Uri.parse(sound);
-            if (u == null) u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
             AudioAttributes aa = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
-            try {
-                mp = new MediaPlayer();
-                mp.setAudioAttributes(aa);
-                mp.setDataSource(this, u);
-                mp.setLooping(true);
-                mp.prepare();
-                mp.start();
-            } catch (Throwable e) {
-                try { if (mp != null) mp.release(); } catch (Throwable ignored) { }
-                mp = null;
-                try {
-                    rt = RingtoneManager.getRingtone(this, u);
-                    if (rt != null) {
-                        rt.setAudioAttributes(aa);
-                        if (android.os.Build.VERSION.SDK_INT >= 28) rt.setLooping(true);
-                        rt.play();
-                    }
-                } catch (Throwable ignored) { }
-            }
+            // 고른 소리 → 기본 알람음 → 기본 알림음 순으로 시도하고, 전부 안 되면(잠금 해제 전 재부팅 직후 등) 기계음이라도 낸다
+            Uri[] cands = new Uri[]{
+                    sound.isEmpty() ? null : Uri.parse(sound),
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                    android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI,
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    android.provider.Settings.System.DEFAULT_RINGTONE_URI};
+            boolean ok = false;
+            for (Uri u : cands) { if (u != null && tryPlay(u, aa)) { ok = true; break; } }
+            if (!ok) startBeeper();
         }
         if (vibrate) {
             try {
@@ -163,7 +184,23 @@ public class AlarmService extends Service {
         }
     }
 
+    private void startBeeper() {
+        try {
+            tg = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
+            beeper = new Runnable() {
+                @Override public void run() {
+                    try { if (tg != null) tg.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 900); } catch (Throwable ignored) { }
+                    h.postDelayed(this, 1200);
+                }
+            };
+            h.post(beeper);
+        } catch (Throwable ignored) { }
+    }
+
     private void silence() {
+        if (beeper != null) { h.removeCallbacks(beeper); beeper = null; }
+        try { if (tg != null) tg.release(); } catch (Throwable ignored) { }
+        tg = null;
         if (autoOff != null) { h.removeCallbacks(autoOff); autoOff = null; }
         try { if (mp != null) { mp.stop(); mp.release(); } } catch (Throwable ignored) { }
         mp = null;

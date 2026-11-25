@@ -386,10 +386,12 @@ public class Alarms extends BroadcastReceiver {
             schedule(c);   // 울릴 때마다 앞으로 21일 치를 다시 채워서, 앱을 오래 안 열어도 알람이 끊기지 않게 한다
         } else if (ACTION_STOP.equals(a)) {
             stop(c, i);
+        } else if (Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(a)) {
+            schedule(c);   // 재부팅 직후 잠금을 풀기 전에도 알람부터 다시 건다 (위젯은 건드리지 않는다)
         } else {
             // 부팅·앱 업데이트·시간 변경 시 다시 예약
             schedule(c);
-            WidgetBase.updateAll(c);
+            try { WidgetBase.updateAll(c); } catch (Throwable ignored) { }
         }
     }
 
