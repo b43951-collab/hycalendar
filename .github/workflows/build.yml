@@ -33,11 +33,37 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      - name: 교체 서명 (서명 키 비밀값이 등록돼 있을 때만)
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASS }}
+        run: |
+          set -e
+          cp app/build/outputs/apk/debug/app-debug.apk hycalendar.apk
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ]; then echo "서명 키 비밀값이 없어서 옛 서명 그대로 사용"; exit 0; fi
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "build-tools: $BT"
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/new.p12"
+          "$BT/apksigner" rotate --out "$RUNNER_TEMP/lineage" \
+            --old-signer --ks app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android \
+            --new-signer --ks "$RUNNER_TEMP/new.p12" --ks-key-alias hycal --ks-pass env:KS_PASS --key-pass env:KS_PASS
+          # 첫 서명자=옛 키(안드로이드 8 이하용 v2), 다음 서명자=새 키(v3, 옛 키가 새 키로 바꿔도 된다는 증명서 포함)
+          "$BT/apksigner" sign --lineage "$RUNNER_TEMP/lineage" \
+            --ks app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android \
+            --next-signer \
+            --ks "$RUNNER_TEMP/new.p12" --ks-key-alias hycal --ks-pass env:KS_PASS --key-pass env:KS_PASS \
+            --out signed.apk app/build/outputs/apk/debug/app-debug.apk
+          "$BT/apksigner" verify -v --print-certs signed.apk | tee verify.txt
+          grep -q "v3 scheme (APK Signature Scheme v3): true" verify.txt
+          mv signed.apk hycalendar.apk
+          rm -f "$RUNNER_TEMP/new.p12"
+          echo "교체 서명 완료"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: hycalendar-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: hycalendar.apk
 
       - name: Publish latest release
         env:
@@ -45,7 +71,6 @@ jobs:
         run: |
           VC=$(grep -oP "versionCode \K[0-9]+" app/build.gradle)
           VN=$(grep -oP "versionName '\K[^']+" app/build.gradle)
-          cp app/build/outputs/apk/debug/app-debug.apk hycalendar.apk
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest hycalendar.apk --title "최신 빌드" --notes "커밋 ${GITHUB_SHA::7} · v${VN} · code ${VC}" --target "$GITHUB_SHA"
           # 릴리스가 임시저장(draft)으로 남으면 앱이 못 찾으므로 공개로 전환
