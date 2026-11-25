@@ -48,21 +48,25 @@ public class AlarmService extends Service {
         if (i == null) { finishRing(); return START_NOT_STICKY; }
         String a = i.getAction();
         if (ACT_STOP.equals(a)) {
-            Store.init(this);
-            String kk = i.getStringExtra("key");
-            Alarms.markStopped(kk != null && !kk.isEmpty() ? kk : key);   // 오늘 이 알람은 종료됨: 앱을 열어 재예약해도 되살아나지 않는다
-            Alarms.cancelRest(this, i.getIntExtra("base", base));
-            finishRing();
+            finishRing();   // 소리·진동부터 즉시 끈다. 기록 저장에서 오류가 나도 알람은 반드시 멈춘다
+            try {
+                Store.init(this);
+                String kk = i.getStringExtra("key");
+                Alarms.markStopped(kk != null && !kk.isEmpty() ? kk : key);   // 오늘 이 알람은 종료됨: 앱을 열어 재예약해도 되살아나지 않는다
+            } catch (Throwable ignored) { }
+            try { Alarms.cancelRest(this, i.getIntExtra("base", base)); } catch (Throwable ignored) { }
             return START_NOT_STICKY;
         }
         if (ACT_SNOOZE.equals(a)) {
-            Store.init(this);
-            String kk = i.getStringExtra("key");
-            int kx = i.getIntExtra("k", kIdx);
-            // 누른 시각부터 N분 뒤에 다시 울리도록 기록하고 다시 예약한다
-            Alarms.markSnoozed(kk != null && !kk.isEmpty() ? kk : key, kx, System.currentTimeMillis());
-            Alarms.schedule(this);
             finishRing();
+            try {
+                Store.init(this);
+                String kk = i.getStringExtra("key");
+                int kx = i.getIntExtra("k", kIdx);
+                // 누른 시각부터 N분 뒤에 다시 울리도록 기록하고 다시 예약한다
+                Alarms.markSnoozed(kk != null && !kk.isEmpty() ? kk : key, kx, System.currentTimeMillis());
+                Alarms.schedule(this);
+            } catch (Throwable ignored) { }
             return START_NOT_STICKY;
         }
         // 안드로이드는 서비스를 시작하면 5초 안에 startForeground를 부르라고 요구한다 → 무엇보다 먼저 한다
@@ -156,6 +160,7 @@ public class AlarmService extends Service {
                 if (rt.isPlaying()) return true;
             }
         } catch (Throwable ignored) { }
+        try { if (rt != null) rt.stop(); } catch (Throwable ignored) { }   // 실패한 소리가 뒤에서 계속 울리지 않도록
         rt = null;
         return false;
     }

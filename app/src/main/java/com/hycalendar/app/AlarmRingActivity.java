@@ -171,7 +171,9 @@ public class AlarmRingActivity extends Activity {
     }
 
     private void send(String action) {
-        try { startService(new Intent(this, AlarmService.class).setAction(action).putExtra("base", base).putExtra("key", key).putExtra("k", kIdx)); } catch (Throwable ignored) { }
+        Intent it = new Intent(this, AlarmService.class).setAction(action).putExtra("base", base).putExtra("key", key).putExtra("k", kIdx);
+        try { startService(it); }
+        catch (Throwable e) { try { startForegroundService(it); } catch (Throwable ignored) { } }
         finish();
     }
 
