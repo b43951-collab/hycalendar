@@ -203,7 +203,7 @@ final class Store {
             case "synced_cid": case "synced_pt": case "mcount": case "scount": case "grp_mate":
             case "perm_next": case "perm_guide_ver": case "notif_asked": case "login_later":
             case "srv_bk": case "srv_bk_ms": case "auto_bk": case "app_ver": case "purged_mate_uses":
-            case "sched_codes": case "al_state": case "beta_upd":
+            case "sched_codes": case "al_state": case "beta_upd": case "upd_chk_ms":
                 return true;
             default:
                 return k.matches("w\\d+_.*");
@@ -231,7 +231,9 @@ final class Store {
     static synchronized boolean importJson(String json) {
         try {
             JSONObject root = new JSONObject(json);
+            if (root.length() == 0) return false;   // 내용이 없는 파일로 현재 데이터를 지워 버리지 않는다
             SharedPreferences.Editor ed = sp.edit();
+            ed.remove("al_state");   // 알람의 '오늘 종료/다시 울림' 기록은 복원한 알람과 맞지 않으니 비운다
             for (String ek : new java.util.ArrayList<>(sp.getAll().keySet())) if (!deviceKey(ek)) ed.remove(ek);   // 기기 상태(로그인·연결 등)는 지우지 않는다
             java.util.Iterator<String> it = root.keys();
             while (it.hasNext()) {

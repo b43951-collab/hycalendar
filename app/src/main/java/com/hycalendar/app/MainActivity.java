@@ -103,7 +103,13 @@ public class MainActivity extends Activity {
         try { if (Sync.loggedIn() && Store.getS("email", "").isEmpty()) Sync.signOut(); } catch (Throwable ignored) { }
         try { Sync.start(); } catch (Throwable ignored) { }
         try {
-            Updater.check(this, (newer, ver, url, err) -> { if (newer && !isFinishing()) Updater.promptAndInstall(this, ver, url); });
+            // 앱을 열 때마다 GitHub에 묻지 않는다(같은 통신사·회사 망의 많은 사용자가 몰리면 막힌다): 3시간에 한 번만
+            long lastChk = 0;
+            try { lastChk = Long.parseLong(Store.getS("upd_chk_ms", "0")); } catch (Exception ignored) { }
+            if (System.currentTimeMillis() - lastChk > 3 * 3600000L) {
+                Store.putS("upd_chk_ms", String.valueOf(System.currentTimeMillis()));
+                Updater.check(this, (newer, ver, url, err) -> { if (newer && !isFinishing()) Updater.promptAndInstall(this, ver, url); });
+            }
         } catch (Throwable ignored) { }
         final Runnable askLogin = () -> {
             if (Sync.configured() && !Sync.loggedIn() && !Store.getB("login_later", false)) SyncUi.loginDialog(this, th, true, this::refreshSettings);

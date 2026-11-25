@@ -241,7 +241,7 @@ final class Sync {
     static void backupToServer(String json, Done cb) {
         try {
             if (!loggedIn()) { cb.run("먼저 로그인하세요"); return; }
-            if (json.length() > 900000) { cb.run("백업 용량이 너무 커서 서버에 올릴 수 없어요"); return; }
+            if (json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 950000) { cb.run("백업 용량이 너무 커서 서버에 올릴 수 없어요"); return; }
             Map<String, Object> d = new HashMap<>();
             d.put("j", json);
             d.put("ts", System.currentTimeMillis());
