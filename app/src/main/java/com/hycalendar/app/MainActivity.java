@@ -596,66 +596,6 @@ public class MainActivity extends Activity {
         }
         box.addView(g);
 
-        box.addView(Ui.sectionTitle(this, th, "사내 부부 / 가족 연결"));
-        box.addView(SyncUi.card(this, th, this::refreshSettings));
-
-        box.addView(Ui.sectionTitle(this, th, "앱 업데이트"));
-        LinearLayout uc = Ui.card(this, th);
-        TextView verTv = Ui.text(this, "현재 버전 v" + Updater.currentName(this) + (Updater.beta() ? "  · 시험 버전 받는 중" : ""), 15, th.fg, true);
-        // 숨은 기능: 버전 글자를 길게 누르면 시험 버전 받기가 켜지고 꺼진다 (개발자용)
-        verTv.setOnLongClickListener(v -> {
-            boolean on = !Updater.beta();
-            Store.putB("beta_upd", on);
-            toast(on ? "시험 버전 받기를 켰어요" : "시험 버전 받기를 껐어요");
-            refreshSettings();
-            return true;
-        });
-        uc.addView(verTv);
-        uc.addView(Ui.btn(this, th, "업데이트 확인", false, v -> {
-            toast("확인 중…");
-            Updater.check(this, (newer, ver, url, err) -> {
-                if (err != null) toast(err);
-                else if (newer) Updater.promptAndInstall(this, ver, url);
-                else toast("최신 버전이에요");
-            });
-        }));
-        // 개발자용(시험 버전 받기를 켰거나 관리자 계정): 서버 사용량을 바로 열어 본다
-        if (Updater.beta() || Sync.isAdmin) {
-            uc.addView(Ui.btn(this, th, "Firebase 사용량 보기 (읽기·쓰기·전송량)", false, v ->
-                    openUrl("https://console.firebase.google.com/project/hycalendar-b73ed/firestore/databases/-default-/usage")));
-            uc.addView(Ui.btn(this, th, "GitHub 보기 (빌드·배포·접속 현황)", false, v ->
-                    openUrl("https://github.com/b43951-collab/hycalendar/actions")));
-        }
-        box.addView(uc);
-
-        box.addView(Ui.sectionTitle(this, th, "임시공휴일"));
-        LinearLayout hc = Ui.card(this, th);
-        hc.addView(Ui.text(this, "정부가 임시공휴일을 지정하면 여기서 직접 추가하세요. 상근(평일 근무) 알람과 달력에 바로 반영돼요.", 13, th.sub, false));
-        for (final java.util.Map.Entry<String, String> e : Holidays.custom().entrySet()) {
-            hc.addView(Ui.btn(this, th, e.getKey() + "  " + e.getValue() + "  (눌러서 삭제)", false, v -> {
-                java.util.TreeMap<String, String> m = Holidays.custom();
-                m.remove(e.getKey());
-                Holidays.setCustom(m);
-                afterHolidayChange();
-            }));
-        }
-        hc.addView(Ui.btn(this, th, "임시공휴일 추가", false, v -> {
-            LocalDate t = LocalDate.now();
-            new android.app.DatePickerDialog(this, (dp, y, mo, d) -> {
-                java.util.TreeMap<String, String> m = Holidays.custom();
-                m.put(LocalDate.of(y, mo + 1, d).toString(), "임시공휴일");
-                Holidays.setCustom(m);
-                afterHolidayChange();
-            }, t.getYear(), t.getMonthValue() - 1, t.getDayOfMonth()).show();
-        }));
-        box.addView(hc);
-
-        box.addView(Ui.sectionTitle(this, th, "알람 진단"));
-        LinearLayout dc = Ui.card(this, th);
-        dc.addView(Ui.text(this, "알람이 안 울렸다면 먼저 확인해 보세요. 결과를 복사해서 게시판에 올려 주시면 원인을 바로 찾을 수 있어요.", 13, th.sub, false));
-        dc.addView(Ui.btn(this, th, "알람 진단 보기", false, v -> DiagUi.show(this, th)));
-        box.addView(dc);
-
         box.addView(Ui.sectionTitle(this, th, "보기"));
         LinearLayout vc = Ui.card(this, th);
         vc.addView(Ui.toggle(this, th, "공휴일 표시", Store.getB("holiday", true), on -> { Store.putB("holiday", on); dataChanged(); }));
@@ -739,6 +679,66 @@ public class MainActivity extends Activity {
         note.setPadding(0, dp(8), 0, 0);
         bc.addView(note);
         box.addView(bc);
+
+        box.addView(Ui.sectionTitle(this, th, "사내 부부 / 가족 연결"));
+        box.addView(SyncUi.card(this, th, this::refreshSettings));
+
+        box.addView(Ui.sectionTitle(this, th, "앱 업데이트"));
+        LinearLayout uc = Ui.card(this, th);
+        TextView verTv = Ui.text(this, "현재 버전 v" + Updater.currentName(this) + (Updater.beta() ? "  · 시험 버전 받는 중" : ""), 15, th.fg, true);
+        // 숨은 기능: 버전 글자를 길게 누르면 시험 버전 받기가 켜지고 꺼진다 (개발자용)
+        verTv.setOnLongClickListener(v -> {
+            boolean on = !Updater.beta();
+            Store.putB("beta_upd", on);
+            toast(on ? "시험 버전 받기를 켰어요" : "시험 버전 받기를 껐어요");
+            refreshSettings();
+            return true;
+        });
+        uc.addView(verTv);
+        uc.addView(Ui.btn(this, th, "업데이트 확인", false, v -> {
+            toast("확인 중…");
+            Updater.check(this, (newer, ver, url, err) -> {
+                if (err != null) toast(err);
+                else if (newer) Updater.promptAndInstall(this, ver, url);
+                else toast("최신 버전이에요");
+            });
+        }));
+        // 개발자용(시험 버전 받기를 켰거나 관리자 계정): 서버 사용량을 바로 열어 본다
+        if (Updater.beta() || Sync.isAdmin) {
+            uc.addView(Ui.btn(this, th, "Firebase 사용량 보기 (읽기·쓰기·전송량)", false, v ->
+                    openUrl("https://console.firebase.google.com/project/hycalendar-b73ed/firestore/databases/-default-/usage")));
+            uc.addView(Ui.btn(this, th, "GitHub 보기 (빌드·배포·접속 현황)", false, v ->
+                    openUrl("https://github.com/b43951-collab/hycalendar/actions")));
+        }
+        box.addView(uc);
+
+        box.addView(Ui.sectionTitle(this, th, "임시공휴일"));
+        LinearLayout hc = Ui.card(this, th);
+        hc.addView(Ui.text(this, "정부가 임시공휴일을 지정하면 여기서 직접 추가하세요. 상근(평일 근무) 알람과 달력에 바로 반영돼요.", 13, th.sub, false));
+        for (final java.util.Map.Entry<String, String> e : Holidays.custom().entrySet()) {
+            hc.addView(Ui.btn(this, th, e.getKey() + "  " + e.getValue() + "  (눌러서 삭제)", false, v -> {
+                java.util.TreeMap<String, String> m = Holidays.custom();
+                m.remove(e.getKey());
+                Holidays.setCustom(m);
+                afterHolidayChange();
+            }));
+        }
+        hc.addView(Ui.btn(this, th, "임시공휴일 추가", false, v -> {
+            LocalDate t = LocalDate.now();
+            new android.app.DatePickerDialog(this, (dp, y, mo, d) -> {
+                java.util.TreeMap<String, String> m = Holidays.custom();
+                m.put(LocalDate.of(y, mo + 1, d).toString(), "임시공휴일");
+                Holidays.setCustom(m);
+                afterHolidayChange();
+            }, t.getYear(), t.getMonthValue() - 1, t.getDayOfMonth()).show();
+        }));
+        box.addView(hc);
+
+        box.addView(Ui.sectionTitle(this, th, "알람 진단"));
+        LinearLayout dc = Ui.card(this, th);
+        dc.addView(Ui.text(this, "알람이 안 울렸다면 먼저 확인해 보세요. 결과를 복사해서 게시판에 올려 주시면 원인을 바로 찾을 수 있어요.", 13, th.sub, false));
+        dc.addView(Ui.btn(this, th, "알람 진단 보기", false, v -> DiagUi.show(this, th)));
+        box.addView(dc);
 
         String ver = "";
         try { ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }

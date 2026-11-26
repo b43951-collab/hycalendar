@@ -8,10 +8,12 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.text.InputType;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
-import android.widget.SeekBar;
+import android.widget.EditText;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -239,31 +241,48 @@ final class Ui {
         v.setText(base == 0 ? "없음" : "");
     }
 
-    /** 슬라이더: 오른쪽에 현재 값을 보여준다. */
+    /** 수치 조절: [−] 값(직접 입력 가능) [+]. 범위를 벗어나면 자동으로 맞춘다. */
     static View slider(Context c, Theme th, String label, float min, float max, float cur, FloatCb cb) {
+        final boolean whole = (max - min) >= 10;
+        final float step = whole ? 5f : 0.05f;
         LinearLayout l = new LinearLayout(c);
-        l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(0, dp(4), 0, dp(2));
-        LinearLayout top = new LinearLayout(c);
-        top.addView(text(c, label, 14, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView val = text(c, String.format("%.2f", cur), 13, th.sub, false);
-        top.addView(val);
-        l.addView(top);
-        SeekBar sb = new SeekBar(c);
-        sb.setMax(100);
-        sb.setProgress(Math.round((cur - min) / (max - min) * 100));
-        sb.setProgressTintList(ColorStateList.valueOf(th.todayStroke));
-        sb.setThumbTintList(ColorStateList.valueOf(th.todayStroke));
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar x, int p, boolean u) {
-                float v = min + (max - min) * p / 100f;
-                val.setText(String.format("%.2f", v));
-                if (u) cb.run(v);
-            }
-            public void onStartTrackingTouch(SeekBar x) { }
-            public void onStopTrackingTouch(SeekBar x) { }
-        });
-        l.addView(sb);
+        l.setOrientation(LinearLayout.HORIZONTAL);
+        l.setGravity(Gravity.CENTER_VERTICAL);
+        l.setPadding(0, dp(4), 0, dp(4));
+        l.addView(text(c, label, 14, th.fg, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        final EditText et = new EditText(c);
+        et.setInputType(whole ? InputType.TYPE_CLASS_NUMBER : (InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL));
+        et.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        et.setSingleLine(true);
+        et.setGravity(Gravity.CENTER);
+        et.setTextSize(15);
+        et.setTextColor(th.fg);
+        et.setBackground(round(th.soft, 10));
+        et.setPadding(dp(4), dp(8), dp(4), dp(8));
+        final float[] val = { cur };
+        final java.util.function.Consumer<Float> apply = v0 -> {
+            float v = Math.max(min, Math.min(max, v0));
+            v = Math.round(v / (whole ? 1f : 0.01f)) * (whole ? 1f : 0.01f);
+            val[0] = v;
+            et.setText(whole ? String.valueOf(Math.round(v)) : String.format(java.util.Locale.US, "%.2f", v));
+            cb.run(v);
+        };
+        et.setText(whole ? String.valueOf(Math.round(cur)) : String.format(java.util.Locale.US, "%.2f", cur));
+        final Runnable commit = () -> {
+            try { apply.accept(Float.parseFloat(et.getText().toString().trim())); }
+            catch (Exception e) { et.setText(whole ? String.valueOf(Math.round(val[0])) : String.format(java.util.Locale.US, "%.2f", val[0])); }
+        };
+        et.setOnEditorActionListener((v, id, ev) -> { commit.run(); et.clearFocus(); return false; });
+        et.setOnFocusChangeListener((v, has) -> { if (!has) commit.run(); });
+        TextView minus = btn(c, th, "−", false, v -> { commit.run(); apply.accept(val[0] - step); });
+        TextView plus = btn(c, th, "+", false, v -> { commit.run(); apply.accept(val[0] + step); });
+        minus.setPadding(dp(14), dp(6), dp(14), dp(6));
+        plus.setPadding(dp(14), dp(6), dp(14), dp(6));
+        l.addView(minus);
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.WRAP_CONTENT);
+        ep.setMargins(dp(6), 0, dp(6), 0);
+        l.addView(et, ep);
+        l.addView(plus);
         return l;
     }
 
