@@ -347,7 +347,7 @@ public class MainActivity extends Activity {
     /** 자동 테마를 켰으면 낮/밤에 따라 정해 둔 테마, 아니면 직접 고른 테마 */
     private int effTheme() { return !autoTheme ? theme : (isNight() ? nightTheme : dayTheme); }
 
-    private void setTheme(int idx) {
+    private void chooseTheme(int idx) {
         theme = idx;
         if (autoTheme) { if (isNight()) nightTheme = idx; else dayTheme = idx; }
     }
@@ -1447,7 +1447,7 @@ public class MainActivity extends Activity {
         boolean selT = effTheme() == idx;
         gd.setStroke(selT ? dp(3) : dp(1), selT ? 0xFF4C9AFF : 0xFF666666);
         b.setBackground(gd);
-        b.setOnClickListener(v -> { setTheme(idx); savePrefs(); fillSettings(); });
+        b.setOnClickListener(v -> { chooseTheme(idx); savePrefs(); fillSettings(); });
         LinearLayout.LayoutParams lp = addToBody ? new LinearLayout.LayoutParams(-1, dp(hDp)) : new LinearLayout.LayoutParams(0, dp(hDp), 1f);
         lp.setMargins(dp(3), dp(3), dp(3), dp(3));
         if (addToBody) settingsBody.addView(b, lp); else b.setLayoutParams(lp);
@@ -1676,7 +1676,7 @@ public class MainActivity extends Activity {
         ok.setText("적용");
         ok.setOnClickListener(v -> {
             if (isBg) customBg = cur[0]; else customFg = cur[0];
-            setTheme(-1);
+            chooseTheme(-1);
             savePrefs();
             pickerPanel.setVisibility(View.GONE);
             fillSettings();
