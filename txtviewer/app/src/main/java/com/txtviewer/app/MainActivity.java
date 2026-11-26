@@ -22,6 +22,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
 import android.text.Editable;
+import android.text.style.LeadingMarginSpan;
+import android.text.style.LineHeightSpan;
+import java.util.Calendar;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.io.OutputStream;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.BackgroundColorSpan;
@@ -84,6 +92,10 @@ public class MainActivity extends Activity {
     private interface IntCb { void on(int v); }
 
     private static final class Fe { String id, name, mime; long size; boolean dir, sel; }
+    private static final class Bm { int off; String note; }
+    private static final class LItem { String text; int off; Bm ref; }
+    private static final String BACKUP_NAME = "나의소설_백업.json";
+    private static final Pattern CH = Pattern.compile("^\\s*(?:제\\s*\\d+\\s*[장화회편부권절막]|\\d+\\s*[장화회편](?![가-힣])|第\\s*\\d+\\s*[章話话回]|(?i:chapter|episode)\\s*\\d+|(?i:ch|ep)\\.?\\s*\\d+(?![0-9A-Za-z가-힣])|프롤로그|에필로그|외전|번외|서장|종장)");
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private SharedPreferences sp;
@@ -96,6 +108,25 @@ public class MainActivity extends Activity {
     private int marginH, marginV; // dp
     private int font;
     private boolean showNum, volKeys, animOn;
+    private boolean autoTheme, keepOn = true;
+    private int dayTheme = 0, nightTheme = 1, nightStart = 20, nightEnd = 6, dimPct = 0, indentCh = 0, gap10 = 0;
+    private int lastEff = -2;
+    private View dimView;
+    private FrameLayout sleepCover;
+    private long sleepEndAt = 0;
+    private Runnable sleepRun;
+    private String bk = "";
+    private final ArrayList<Bm> bms = new ArrayList<>();
+    private ArrayList<Integer> tocOff = new ArrayList<>();
+    private ArrayList<String> tocTitle = new ArrayList<>();
+    private LinearLayout listPanel;
+    private TextView listTitle;
+    private ListView listView;
+    private BaseAdapter listAdapter;
+    private ArrayList<LItem> litems = new ArrayList<>();
+    private ArrayList<Fe> fmAll = new ArrayList<>();
+    private String fmFilter = "";
+    private Button fmSearchB;
 
     // 본문/페이지
     private String text = "";
@@ -196,6 +227,7 @@ public class MainActivity extends Activity {
         if (pickerPanel.getVisibility() == View.VISIBLE) { pickerPanel.setVisibility(View.GONE); return; }
         if (pickerPanel.getVisibility() != View.VISIBLE && fmPanel.getVisibility() == View.VISIBLE) { fmBack(); return; }
         if (settingsPanel.getVisibility() == View.VISIBLE) { closeSettings(true); return; }
+        if (listPanel.getVisibility() == View.VISIBLE) { listPanel.setVisibility(View.GONE); return; }
         if (quickPanel.getVisibility() == View.VISIBLE) { quickPanel.setVisibility(View.GONE); return; }
         if (searchBar.getVisibility() == View.VISIBLE) { closeSearch(); return; }
         if (menuVisible) { setMenu(false); return; }
@@ -286,17 +318,62 @@ public class MainActivity extends Activity {
         showNum = sp.getBoolean("num", true);
         volKeys = sp.getBoolean("vol", true);
         animOn = sp.getBoolean("anim", true);
+        autoTheme = sp.getBoolean("auto", false);
+        dayTheme = sp.getInt("dayT", 0);
+        nightTheme = sp.getInt("nightT", 1);
+        nightStart = sp.getInt("ns", 20);
+        nightEnd = sp.getInt("ne", 6);
+        dimPct = sp.getInt("dim", 0);
+        keepOn = sp.getBoolean("keep", true);
+        indentCh = sp.getInt("indent", 0);
+        gap10 = sp.getInt("gap", 0);
     }
 
     private void savePrefs() {
         sp.edit().putInt("theme", theme).putInt("cbg", customBg).putInt("cfg", customFg)
                 .putFloat("size", sizeSp).putInt("spacing", spacing10).putInt("mh", marginH)
                 .putInt("mv", marginV).putInt("font", font).putBoolean("num", showNum)
-                .putBoolean("vol", volKeys).putBoolean("anim", animOn).apply();
+                .putBoolean("vol", volKeys).putBoolean("anim", animOn)
+                .putBoolean("auto", autoTheme).putInt("dayT", dayTheme).putInt("nightT", nightTheme)
+                .putInt("ns", nightStart).putInt("ne", nightEnd).putInt("dim", dimPct).putBoolean("keep", keepOn)
+                .putInt("indent", indentCh).putInt("gap", gap10).apply();
     }
 
-    private int bgColor() { return theme >= 0 ? T_BG[theme] : customBg; }
-    private int fgColor() { return theme >= 0 ? T_FG[theme] : customFg; }
+    private boolean isNight() {
+        int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        return nightStart > nightEnd ? (h >= nightStart || h < nightEnd) : (h >= nightStart && h < nightEnd);
+    }
+
+    /** 자동 테마를 켰으면 낮/밤에 따라 정해 둔 테마, 아니면 직접 고른 테마 */
+    private int effTheme() { return !autoTheme ? theme : (isNight() ? nightTheme : dayTheme); }
+
+    private void setTheme(int idx) {
+        theme = idx;
+        if (autoTheme) { if (isNight()) nightTheme = idx; else dayTheme = idx; }
+    }
+
+    private void checkAutoTheme() {
+        int e = effTheme();
+        if (e == lastEff) return;
+        lastEff = e;
+        if (pageCount > 0 && !paginating) showPage(false);
+        if (pv != null) pv.invalidate();
+    }
+
+    @Override
+    protected void onResume() { super.onResume(); checkAutoTheme(); }
+
+    private int bgColor() { int t = effTheme(); return t >= 0 ? T_BG[t] : customBg; }
+    private int fgColor() { int t = effTheme(); return t >= 0 ? T_FG[t] : customFg; }
+
+    private void applyDim() {
+        if (dimView != null) dimView.setBackgroundColor(Color.argb(Math.max(0, Math.min(70, dimPct)) * 255 / 100, 0, 0, 0));
+    }
+
+    private void applyKeepOn() {
+        if (keepOn) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
 
@@ -416,7 +493,11 @@ public class MainActivity extends Activity {
         quickCard.setBackground(qg);
         quickCard.setPadding(dp(12), dp(12), dp(12), dp(12));
         quickCard.setClickable(true);
+        quickBtn("책갈피 추가 / 해제", () -> toggleBookmark());
+        quickBtn("책갈피 목록", () -> openBookmarks());
+        quickBtn("목차", () -> openToc());
         quickBtn("텍스트 검색", () -> openSearch());
+        quickBtn("취침 타이머", () -> sleepDialog());
         quickBtn("파일 열기 · 관리", () -> openFm());
         quickBtn("설정", () -> openSettings());
         FrameLayout.LayoutParams ql = new FrameLayout.LayoutParams(dp(260), -2);
@@ -424,6 +505,64 @@ public class MainActivity extends Activity {
         quickPanel.addView(quickCard, ql);
         quickPanel.setVisibility(View.GONE);
         root.addView(quickPanel, new FrameLayout.LayoutParams(-1, -1));
+
+        // 목차 / 책갈피 목록 화면
+        listPanel = new LinearLayout(this);
+        listPanel.setOrientation(LinearLayout.VERTICAL);
+        listPanel.setBackgroundColor(0xFF202020);
+        listPanel.setClickable(true);
+        listPanel.setVisibility(View.GONE);
+        LinearLayout lh = new LinearLayout(this);
+        lh.setOrientation(LinearLayout.HORIZONTAL);
+        lh.setGravity(Gravity.CENTER_VERTICAL);
+        lh.setBackgroundColor(0xFF2E2E2E);
+        lh.setPadding(dp(18), dp(30), dp(10), dp(8));
+        listTitle = new TextView(this);
+        listTitle.setTextColor(Color.WHITE);
+        listTitle.setTextSize(20);
+        lh.addView(listTitle, new LinearLayout.LayoutParams(0, -2, 1f));
+        Button lcl = new Button(this); lcl.setText("닫기");
+        lcl.setOnClickListener(v -> listPanel.setVisibility(View.GONE));
+        lh.addView(lcl);
+        listPanel.addView(lh, new LinearLayout.LayoutParams(-1, -2));
+        listView = new ListView(this);
+        listView.setDivider(new android.graphics.drawable.ColorDrawable(0xFF333333));
+        listView.setDividerHeight(1);
+        listAdapter = new BaseAdapter() {
+            public int getCount() { return litems.size(); }
+            public Object getItem(int i) { return litems.get(i); }
+            public long getItemId(int i) { return i; }
+            public View getView(int i, View cv, ViewGroup g) {
+                final LItem it = litems.get(i);
+                LinearLayout row = new LinearLayout(MainActivity.this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(16), dp(2), dp(8), dp(2));
+                TextView tv = new TextView(MainActivity.this);
+                tv.setText(it.text);
+                tv.setTextColor(it.text.startsWith("▶") ? 0xFFFFE082 : Color.WHITE);
+                tv.setTextSize(15);
+                tv.setPadding(0, dp(14), dp(8), dp(14));
+                row.addView(tv, new LinearLayout.LayoutParams(0, -2, 1f));
+                if (it.ref != null) {
+                    Button x = new Button(MainActivity.this);
+                    x.setText("✕");
+                    x.setMinWidth(0); x.setMinimumWidth(dp(48));
+                    x.setOnClickListener(v -> {
+                        bms.remove(it.ref);
+                        saveBms();
+                        if (pageCount > 0) showPage(false);
+                        openBookmarks();
+                    });
+                    row.addView(x);
+                }
+                row.setOnClickListener(v -> jumpTo(it.off));
+                return row;
+            }
+        };
+        listView.setAdapter(listAdapter);
+        listPanel.addView(listView, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(listPanel, new FrameLayout.LayoutParams(-1, -1));
 
         // 설정 화면: 최상단에 저장/닫기 버튼
         settingsPanel = new LinearLayout(this);
@@ -488,6 +627,30 @@ public class MainActivity extends Activity {
         fcl.setOnClickListener(v -> fmClose());
         fh.addView(fup); fh.addView(fnf); fh.addView(fcl);
         fmPanel.addView(fh, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout ftb = new LinearLayout(this);
+        ftb.setOrientation(LinearLayout.HORIZONTAL);
+        ftb.setBackgroundColor(0xFF262626);
+        ftb.setPadding(dp(8), dp(2), dp(8), dp(2));
+        Button fsr = new Button(this); fsr.setText("읽은 책 선택"); fsr.setAllCaps(false);
+        fsr.setOnClickListener(v -> {
+            int c = 0;
+            for (Fe e : fmItems) { e.sel = !e.dir && sp.getBoolean("d2_" + Integer.toString(e.name.hashCode()), false); if (e.sel) c++; }
+            fmAdapter.notifyDataSetChanged(); updateFmBottom();
+            if (c == 0) Toast.makeText(this, "끝까지 읽은 책이 이 목록에 없어요", Toast.LENGTH_SHORT).show();
+        });
+        Button fsa = new Button(this); fsa.setText("전체 선택"); fsa.setAllCaps(false);
+        fsa.setOnClickListener(v -> {
+            boolean all = true;
+            for (Fe e : fmItems) if (!e.dir && !e.sel) all = false;
+            for (Fe e : fmItems) e.sel = !e.dir && !all;
+            fmAdapter.notifyDataSetChanged(); updateFmBottom();
+        });
+        fmSearchB = new Button(this); fmSearchB.setText("파일명 검색"); fmSearchB.setAllCaps(false);
+        fmSearchB.setOnClickListener(v -> fmSearchDialog());
+        ftb.addView(fsr, new LinearLayout.LayoutParams(0, -2, 1f));
+        ftb.addView(fsa, new LinearLayout.LayoutParams(0, -2, 1f));
+        ftb.addView(fmSearchB, new LinearLayout.LayoutParams(0, -2, 1f));
+        fmPanel.addView(ftb, new LinearLayout.LayoutParams(-1, -2));
         fmList = new ListView(this);
         fmList.setDivider(new android.graphics.drawable.ColorDrawable(0xFF333333));
         fmList.setDividerHeight(1);
@@ -512,9 +675,13 @@ public class MainActivity extends Activity {
                 nm.setPadding(dp(4), dp(10), dp(8), dp(10));
                 row.addView(nm, new LinearLayout.LayoutParams(0, -2, 1f));
                 if (!e.dir) {
+                    String k = Integer.toString(e.name.hashCode());
+                    int pr = sp.getInt("p2_" + k, 0);
+                    boolean dn = sp.getBoolean("d2_" + k, false);
                     TextView sz = new TextView(MainActivity.this);
-                    sz.setText(fmtSize(e.size));
-                    sz.setTextColor(0xFF999999);
+                    sz.setText((dn ? "✓ 읽음\n" : (pr > 0 ? pr + "%\n" : "")) + fmtSize(e.size));
+                    sz.setGravity(Gravity.END);
+                    sz.setTextColor(dn ? 0xFF8BC98B : 0xFF999999);
                     sz.setTextSize(12);
                     row.addView(sz);
                 }
@@ -541,7 +708,29 @@ public class MainActivity extends Activity {
         pickerPanel.setVisibility(View.GONE);
         root.addView(pickerPanel, new FrameLayout.LayoutParams(-1, -1));
 
+        // 추가 어둡게: 터치는 아래 화면으로 통과
+        dimView = new View(this);
+        dimView.setClickable(false);
+        dimView.setFocusable(false);
+        root.addView(dimView, new FrameLayout.LayoutParams(-1, -1));
+
+        // 취침 타이머 종료 화면
+        sleepCover = new FrameLayout(this);
+        sleepCover.setBackgroundColor(0xFF000000);
+        sleepCover.setClickable(true);
+        TextView sct = new TextView(this);
+        sct.setText("취침 타이머가 끝났어요.\n화면을 터치하면 계속 읽을 수 있어요.");
+        sct.setTextColor(0xFF3A3A3A);
+        sct.setTextSize(14);
+        sct.setGravity(Gravity.CENTER);
+        sleepCover.addView(sct, new FrameLayout.LayoutParams(-1, -1));
+        sleepCover.setOnClickListener(v -> sleepWake());
+        sleepCover.setVisibility(View.GONE);
+        root.addView(sleepCover, new FrameLayout.LayoutParams(-1, -1));
+
         setContentView(root);
+        applyDim();
+        applyKeepOn();
     }
 
     private void quickBtn(String t, Runnable r) {
@@ -568,6 +757,7 @@ public class MainActivity extends Activity {
     // ───────────────────────── 페이지 넘김 ─────────────────────────
     private void turn(int d) {
         if (text.isEmpty() || paginating || pageCount == 0) return;
+        checkAutoTheme();
         int n = curPage + d;
         if (n < 0) { Toast.makeText(this, "첫 페이지예요", Toast.LENGTH_SHORT).show(); return; }
         if (n >= pageCount) { Toast.makeText(this, "마지막 페이지예요", Toast.LENGTH_SHORT).show(); return; }
@@ -606,8 +796,11 @@ public class MainActivity extends Activity {
         int s = starts[curPage];
         int e = curPage + 1 < pageCount ? starts[curPage + 1] : text.length();
         String sub = text.substring(s, Math.max(s, e));
-        CharSequence cs = searchQ.isEmpty() ? sub : highlight(sub);
-        pv.layout = buildLayout(cs, pv.pagePaint(), pv.textW(), spacing10 / 10f);
+        TextPaint pp = pv.pagePaint();
+        SpannableString ss = decorate(sub, s == 0 || text.charAt(s - 1) == '\n', Math.round(indentCh * pp.getTextSize()), Math.round(gap10 / 10f * pp.getTextSize()));
+        if (!searchQ.isEmpty()) highlight(ss, sub);
+        pv.layout = buildLayout(ss, pp, pv.textW(), spacing10 / 10f);
+        pv.marked = isMarked(s, e);
         keepOffset = s;
         nextBtn.setVisibility(!paginating && curPage == pageCount - 1 ? View.VISIBLE : View.GONE);
         pv.invalidate();
@@ -617,13 +810,162 @@ public class MainActivity extends Activity {
 
     private void updateInfo() {
         if (pageCount == 0 || paginating) { infoTv.setText(""); return; }
-        infoTv.setText((curPage + 1) + " / " + pageCount + " 쪽  ·  " + (int) ((curPage + 1) * 100L / pageCount) + "%");
+        infoTv.setText((curPage + 1) + " / " + pageCount + " 쪽  ·  " + (int) ((curPage + 1) * 100L / pageCount) + "%"
+                + (sleepEndAt > 0 ? "  ·  취침 " + sleepRemain() + "분 남음" : ""));
         if (!seeking && pageCount > 1) seek.setProgress((int) (curPage * 1000L / (pageCount - 1)));
     }
 
     private void savePos() {
-        if (curUri != null && pageCount > 0 && !paginating)
-            sp.edit().putInt("off_" + curUri.toString().hashCode(), starts[Math.min(curPage, pageCount - 1)]).apply();
+        if (curUri != null && pageCount > 0 && !paginating && !bk.isEmpty()) {
+            int pg = Math.min(curPage, pageCount - 1);
+            SharedPreferences.Editor ed = sp.edit()
+                    .putInt("o2_" + bk, starts[pg])
+                    .putInt("p2_" + bk, (int) ((pg + 1) * 100L / pageCount))
+                    .putString("n2_" + bk, curName);
+            if (pg == pageCount - 1) ed.putBoolean("d2_" + bk, true);   // 끝까지 읽음
+            ed.apply();
+        }
+    }
+
+    // ───────────────────────── 문단 서식 ─────────────────────────
+    /** 문단 사이에 줄 높이를 더해 간격을 만든다 (문단 마지막 줄에만 적용) */
+    private static final class GapSpan implements LineHeightSpan {
+        private final int gap;
+        GapSpan(int g) { gap = g; }
+        @Override
+        public void chooseHeight(CharSequence t, int start, int end, int spanstartv, int lineHeight, Paint.FontMetricsInt fm) {
+            if (t instanceof Spanned && ((Spanned) t).getSpanEnd(this) == end) { fm.descent += gap; fm.bottom += gap; }
+        }
+    }
+
+    private static SpannableString decorate(String sub, boolean startsParagraph, int indentPx, int gapPx) {
+        SpannableString ss = new SpannableString(sub);
+        if (indentPx <= 0 && gapPx <= 0) return ss;
+        int n = sub.length(), pos = 0;
+        while (pos < n) {
+            int nl = sub.indexOf('\n', pos);
+            int end = nl < 0 ? n : nl + 1;
+            if (end - pos > 1) {   // 개행만 있는 빈 줄은 제외
+                if (indentPx > 0 && (pos > 0 || startsParagraph))
+                    ss.setSpan(new LeadingMarginSpan.Standard(indentPx, 0), pos, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                if (gapPx > 0 && nl >= 0)
+                    ss.setSpan(new GapSpan(gapPx), pos, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            pos = end;
+        }
+        return ss;
+    }
+
+    // ───────────────────────── 목차 · 책갈피 ─────────────────────────
+    private static void findChapters(String t, ArrayList<Integer> offs, ArrayList<String> titles) {
+        int pos = 0, len = t.length();
+        Matcher m = CH.matcher("");
+        while (pos < len && offs.size() < 5000) {
+            int nl = t.indexOf('\n', pos);
+            if (nl < 0) nl = len;
+            int l = nl - pos;
+            if (l > 0 && l <= 60) {
+                String line = t.substring(pos, nl);
+                m.reset(line);
+                if (m.lookingAt()) { offs.add(pos); titles.add(line.trim()); }
+            }
+            pos = nl + 1;
+        }
+    }
+
+    private void loadBms() {
+        bms.clear();
+        String j = sp.getString("b2_" + bk, null);
+        if (j == null) return;
+        try {
+            JSONArray a = new JSONArray(j);
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                Bm b = new Bm();
+                b.off = o.getInt("o");
+                b.note = o.optString("t", "");
+                bms.add(b);
+            }
+        } catch (Exception ignored) {}
+        Collections.sort(bms, (x, y) -> Integer.compare(x.off, y.off));
+    }
+
+    private void saveBms() {
+        JSONArray a = new JSONArray();
+        for (Bm b : bms) {
+            try { JSONObject o = new JSONObject(); o.put("o", b.off); o.put("t", b.note); a.put(o); } catch (Exception ignored) {}
+        }
+        sp.edit().putString("b2_" + bk, a.toString()).putString("n2_" + bk, curName).apply();
+    }
+
+    private boolean isMarked(int s, int e) {
+        for (Bm b : bms) if (b.off >= s && b.off < e) return true;
+        return false;
+    }
+
+    private void toggleBookmark() {
+        if (pageCount == 0 || paginating || bk.isEmpty()) { Toast.makeText(this, "먼저 책을 열어 주세요", Toast.LENGTH_SHORT).show(); return; }
+        final int s = starts[curPage];
+        final int e = curPage + 1 < pageCount ? starts[curPage + 1] : text.length();
+        boolean removed = bms.removeIf(b -> b.off >= s && b.off < e);
+        if (removed) {
+            Toast.makeText(this, "책갈피를 해제했어요", Toast.LENGTH_SHORT).show();
+        } else {
+            Bm b = new Bm();
+            b.off = s;
+            String snip = text.substring(s, Math.min(e, s + 60)).replace('\n', ' ').trim();
+            b.note = snip.length() > 26 ? snip.substring(0, 26) + "…" : snip;
+            bms.add(b);
+            Collections.sort(bms, (x, y) -> Integer.compare(x.off, y.off));
+            Toast.makeText(this, "책갈피를 추가했어요", Toast.LENGTH_SHORT).show();
+        }
+        saveBms();
+        pv.marked = isMarked(s, e);
+        pv.invalidate();
+    }
+
+    private void showList(String title, ArrayList<LItem> items, int select) {
+        litems = items;
+        listTitle.setText(title);
+        listAdapter.notifyDataSetChanged();
+        listPanel.setVisibility(View.VISIBLE);
+        listView.setSelection(Math.max(0, select - 2));
+    }
+
+    private void openToc() {
+        if (pageCount == 0 || paginating) { Toast.makeText(this, "먼저 책을 열어 주세요", Toast.LENGTH_SHORT).show(); return; }
+        if (tocOff.isEmpty()) { Toast.makeText(this, "목차로 쓸 제목(제1장, 1화, Chapter 등)을 찾지 못했어요", Toast.LENGTH_LONG).show(); return; }
+        int cur = 0;
+        for (int i = 0; i < tocOff.size(); i++) if (tocOff.get(i) <= keepOffset) cur = i;
+        ArrayList<LItem> items = new ArrayList<>();
+        for (int i = 0; i < tocOff.size(); i++) {
+            LItem it = new LItem();
+            it.text = (i == cur ? "▶ " : "") + tocTitle.get(i);
+            it.off = tocOff.get(i);
+            items.add(it);
+        }
+        showList("목차 (" + items.size() + ")", items, cur);
+    }
+
+    private void openBookmarks() {
+        if (pageCount == 0 || paginating) { Toast.makeText(this, "먼저 책을 열어 주세요", Toast.LENGTH_SHORT).show(); return; }
+        if (bms.isEmpty()) { listPanel.setVisibility(View.GONE); Toast.makeText(this, "책갈피가 없어요. 길게 눌러 '책갈피 추가/해제'로 추가하세요", Toast.LENGTH_LONG).show(); return; }
+        ArrayList<LItem> items = new ArrayList<>();
+        for (Bm b : bms) {
+            LItem it = new LItem();
+            it.text = (pageOf(b.off) + 1) + "쪽   " + b.note;
+            it.off = b.off;
+            it.ref = b;
+            items.add(it);
+        }
+        showList("책갈피 (" + items.size() + ")", items, 0);
+    }
+
+    private void jumpTo(int off) {
+        listPanel.setVisibility(View.GONE);
+        if (pageCount == 0) return;
+        curPage = pageOf(off);
+        showPage(true);
     }
 
     // ───────────────────────── 페이지 계산 ─────────────────────────
@@ -634,7 +976,7 @@ public class MainActivity extends Activity {
                 .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE).build();
     }
 
-    private static int pageEnd(String t, int start, int w, int h, TextPaint tp, float mult) {
+    private static int pageEnd(String t, int start, int w, int h, TextPaint tp, float mult, int indentPx, int gapPx) {
         int len = t.length();
         float px = tp.getTextSize();
         int cpl = (int) (w / (px * 0.45f)) + 1;
@@ -642,7 +984,7 @@ public class MainActivity extends Activity {
         int chunk = Math.max(600, (int) (cpl * lpp * 1.6f) + 200);
         while (true) {
             int e = Math.min(len, start + chunk);
-            StaticLayout sl = buildLayout(t.substring(start, e), tp, w, mult);
+            StaticLayout sl = buildLayout(decorate(t.substring(start, e), start == 0 || t.charAt(start - 1) == '\n', indentPx, gapPx), tp, w, mult);
             int lc = sl.getLineCount();
             int last = -1;
             for (int i = 0; i < lc; i++) { if (sl.getLineBottom(i) <= h) last = i; else break; }
@@ -667,6 +1009,7 @@ public class MainActivity extends Activity {
         final int w = pv.textW(), h = pv.textH();
         final float mult = spacing10 / 10f;
         final TextPaint tp = pv.newPaint();
+        final int ind = Math.round(indentCh * tp.getTextSize()), gp = Math.round(gap10 / 10f * tp.getTextSize());
         final int keep = keepOffset;
         paginating = true;
         lastPW = pv.getWidth();
@@ -684,7 +1027,7 @@ public class MainActivity extends Activity {
                 if (pos >= len) break;
                 if (n == arr.length) arr = Arrays.copyOf(arr, n * 2);
                 arr[n++] = pos;
-                pos = pageEnd(t, pos, w, h, tp, mult);
+                pos = pageEnd(t, pos, w, h, tp, mult, ind, gp);
                 long now = System.currentTimeMillis();
                 if (now - lastUi > 400) {
                     lastUi = now;
@@ -778,10 +1121,21 @@ public class MainActivity extends Activity {
                 foot.setTextAlign(android.graphics.Paint.Align.CENTER);
                 c.drawText((page + 1) + " / " + pageCount, getWidth() / 2f, getHeight() - dp(marginV) + dp(6), foot);
             }
+            if (marked) {   // 책갈피가 있는 페이지는 오른쪽 위에 빨간 리본
+                int w = getWidth(), r = dp(26);
+                rib.reset();
+                rib.moveTo(w - dp(38), 0); rib.lineTo(w - dp(12), 0); rib.lineTo(w - dp(12), r + dp(10));
+                rib.lineTo(w - dp(25), r); rib.lineTo(w - dp(38), r + dp(10)); rib.close();
+                ribP.setColor(0xFFC4574F);
+                c.drawPath(rib, ribP);
+            }
         }
 
         // ── 책 넘김 효과: 책등(왼쪽)을 축으로 페이지가 접히며 넘어간다 ──
         boolean animating;
+        boolean marked;
+        private final android.graphics.Path rib = new android.graphics.Path();
+        private final Paint ribP = new Paint(Paint.ANTI_ALIAS_FLAG);
         private float animT;
         private int animDir;
         private Bitmap bFrom, bTo;
@@ -914,7 +1268,7 @@ public class MainActivity extends Activity {
                     try { getContentResolver().takePersistableUriPermission(d.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
                 }
                 sp.edit().putString("tree", d.getData().toString()).apply();
-                if (treeFor == 1) openFm(); else openNextVolume();
+                if (treeFor == 1) openFm(); else if (treeFor == 2) doBackup(); else if (treeFor == 3) confirmRestore(); else openNextVolume();
             }
             return;
         }
@@ -940,7 +1294,6 @@ public class MainActivity extends Activity {
         pv.layout = null;
         pv.msg = "불러오는 중…";
         pv.invalidate();
-        final int saved = sp.getInt("off_" + u.toString().hashCode(), 0);
         new Thread(() -> {
             String err = null, str = null, cs = "";
             String name = u.getLastPathSegment() == null ? "" : u.getLastPathSegment();
@@ -964,6 +1317,9 @@ public class MainActivity extends Activity {
                 cs = (String) r[1];
                 str = ((String) r[0]).replace("\r\n", "\n").replace('\r', '\n');
             } catch (Exception e) { err = e.getMessage(); }
+            final ArrayList<Integer> to = new ArrayList<>();
+            final ArrayList<String> tt = new ArrayList<>();
+            if (str != null) { try { findChapters(str, to, tt); } catch (Exception ignored) {} }
             final String fe = err, fs = str, fn = name, fc = cs;
             ui.post(() -> {
                 if (fe != null || fs == null) {
@@ -973,7 +1329,10 @@ public class MainActivity extends Activity {
                     return;
                 }
                 text = fs; curUri = u; curName = fn; curCharset = fc;
-                keepOffset = saved;
+                bk = Integer.toString(fn.hashCode());
+                keepOffset = sp.getInt("o2_" + bk, sp.getInt("off_" + u.toString().hashCode(), 0));
+                tocOff = to; tocTitle = tt;
+                loadBms();
                 sp.edit().putString("uri", u.toString()).apply();
                 titleTv.setText(fn + "  (" + fc + ")");
                 if (text.isEmpty()) { paginating = false; pv.msg = "빈 파일이에요"; pv.invalidate(); return; }
@@ -1009,7 +1368,8 @@ public class MainActivity extends Activity {
     private void openSettings() {
         setMenu(false);
         layoutDirty = false;
-        snapI = new int[]{theme, customBg, customFg, spacing10, marginH, marginV, font, showNum ? 1 : 0, volKeys ? 1 : 0, animOn ? 1 : 0};
+        snapI = new int[]{theme, customBg, customFg, spacing10, marginH, marginV, font, showNum ? 1 : 0, volKeys ? 1 : 0, animOn ? 1 : 0,
+                autoTheme ? 1 : 0, dayTheme, nightTheme, nightStart, nightEnd, dimPct, keepOn ? 1 : 0, indentCh, gap10};
         snapSize = sizeSp;
         fillSettings();
         settingsScroll.scrollTo(0, 0);
@@ -1021,11 +1381,17 @@ public class MainActivity extends Activity {
         if (!save && snapI != null) {
             theme = snapI[0]; customBg = snapI[1]; customFg = snapI[2]; spacing10 = snapI[3];
             marginH = snapI[4]; marginV = snapI[5]; font = snapI[6]; showNum = snapI[7] == 1; volKeys = snapI[8] == 1; animOn = snapI[9] == 1;
+            autoTheme = snapI[10] == 1; dayTheme = snapI[11]; nightTheme = snapI[12]; nightStart = snapI[13]; nightEnd = snapI[14];
+            dimPct = snapI[15]; keepOn = snapI[16] == 1; indentCh = snapI[17]; gap10 = snapI[18];
             sizeSp = snapSize;
             layoutDirty = false;
         }
         settingsPanel.setVisibility(View.GONE);
         savePrefs();
+        applyDim();
+        applyKeepOn();
+        lastEff = -2;
+        checkAutoTheme();
         if (layoutDirty && !text.isEmpty()) { keepOffset = pageCount > 0 ? starts[Math.min(curPage, pageCount - 1)] : keepOffset; repaginate(); }
         else if (pageCount > 0) showPage(false);
         pv.invalidate();
@@ -1078,9 +1444,10 @@ public class MainActivity extends Activity {
         GradientDrawable gd = new GradientDrawable();
         gd.setColor(T_BG[idx]);
         gd.setCornerRadius(dp(8));
-        gd.setStroke(theme == idx ? dp(3) : dp(1), theme == idx ? 0xFF4C9AFF : 0xFF666666);
+        boolean selT = effTheme() == idx;
+        gd.setStroke(selT ? dp(3) : dp(1), selT ? 0xFF4C9AFF : 0xFF666666);
         b.setBackground(gd);
-        b.setOnClickListener(v -> { theme = idx; savePrefs(); fillSettings(); });
+        b.setOnClickListener(v -> { setTheme(idx); savePrefs(); fillSettings(); });
         LinearLayout.LayoutParams lp = addToBody ? new LinearLayout.LayoutParams(-1, dp(hDp)) : new LinearLayout.LayoutParams(0, dp(hDp), 1f);
         lp.setMargins(dp(3), dp(3), dp(3), dp(3));
         if (addToBody) settingsBody.addView(b, lp); else b.setLayoutParams(lp);
@@ -1117,6 +1484,18 @@ public class MainActivity extends Activity {
         settingsBody.addView(fmb, new LinearLayout.LayoutParams(-1, -2));
         if (!curName.isEmpty()) settingsBody.addView(label("현재: " + curName + " (" + curCharset + ")", 12, 0xFFAAAAAA));
 
+        section("백업 / 복원");
+        LinearLayout brow = new LinearLayout(this);
+        brow.setOrientation(LinearLayout.HORIZONTAL);
+        Button bb = new Button(this); bb.setText("백업하기"); bb.setAllCaps(false);
+        bb.setOnClickListener(v -> doBackup());
+        Button br = new Button(this); br.setText("복원하기"); br.setAllCaps(false);
+        br.setOnClickListener(v -> confirmRestore());
+        brow.addView(bb, new LinearLayout.LayoutParams(0, -2, 1f));
+        brow.addView(br, new LinearLayout.LayoutParams(0, -2, 1f));
+        settingsBody.addView(brow, new LinearLayout.LayoutParams(-1, -2));
+        settingsBody.addView(label("설정·읽던 위치·책갈피를 책 폴더 안의 '" + BACKUP_NAME + "' 파일로 저장해요. 폴더가 구글 드라이브 등에 동기화되면 폰을 바꿔도 복원할 수 있어요.", 12, 0xFFAAAAAA));
+
         section("추천 테마");
         themeButton(0, "회사 · 밝은 곳\n가나다 ABC", 84, true);
         themeButton(1, "취침 전 · 불 끄고 누워서\n가나다 ABC", 84, true);
@@ -1131,7 +1510,7 @@ public class MainActivity extends Activity {
             settingsBody.addView(row, new LinearLayout.LayoutParams(-1, -2));
         }
 
-        section("직접 설정" + (theme < 0 ? "  (사용 중)" : ""));
+        section("직접 설정" + (effTheme() < 0 ? "  (사용 중)" : ""));
         LinearLayout cr = new LinearLayout(this);
         cr.setOrientation(LinearLayout.HORIZONTAL);
         cr.setGravity(Gravity.CENTER_VERTICAL);
@@ -1139,11 +1518,31 @@ public class MainActivity extends Activity {
         colorEntry(cr, "글자색", fgColor(), false);
         settingsBody.addView(cr, new LinearLayout.LayoutParams(-1, -2));
 
+        section("자동 테마 전환 (낮 / 밤)");
+        CheckBox cat = new CheckBox(this);
+        cat.setText("밤에는 자동으로 어두운 테마로 바꾸기");
+        cat.setTextColor(Color.WHITE);
+        cat.setChecked(autoTheme);
+        cat.setOnCheckedChangeListener((b, c) -> {
+            autoTheme = c;
+            if (c) { if (isNight()) nightTheme = theme; else dayTheme = theme; }
+            savePrefs();
+            fillSettings();
+        });
+        settingsBody.addView(cat);
+        if (autoTheme) {
+            seekRow("밤 시작 시각", 0, 23, nightStart, "시", 1, v -> nightStart = v);
+            seekRow("밤 종료 시각", 0, 23, nightEnd, "시", 1, v -> nightEnd = v);
+            settingsBody.addView(label("지금은 " + (isNight() ? "밤" : "낮") + " 시간대예요. 위에서 테마를 고르면 지금 시간대의 테마로 저장돼요.", 12, 0xFFAAAAAA));
+        }
+
         section("글자");
         seekRow("글자 크기", 10, 40, Math.round(sizeSp), "sp", 1, v -> sizeSp = v);
         seekRow("줄 간격", 10, 25, spacing10, "배", 10, v -> spacing10 = v);
         seekRow("좌우 여백", 0, 60, marginH, "dp", 1, v -> marginH = v);
         seekRow("상하 여백", 0, 80, marginV, "dp", 1, v -> marginV = v);
+        seekRow("문단 첫 줄 들여쓰기", 0, 4, indentCh, "글자", 1, v -> indentCh = v);
+        seekRow("문단 사이 간격", 0, 10, gap10, "줄", 10, v -> gap10 = v);
         settingsBody.addView(label("글꼴", 15, Color.WHITE));
         LinearLayout fr = new LinearLayout(this);
         fr.setOrientation(LinearLayout.HORIZONTAL);
@@ -1177,7 +1576,14 @@ public class MainActivity extends Activity {
         ca.setChecked(animOn);
         ca.setOnCheckedChangeListener((b, c) -> { animOn = c; savePrefs(); });
         settingsBody.addView(ca);
-        settingsBody.addView(label("화면 밝기는 휴대폰 밝기를 그대로 따라갑니다.", 12, 0xFFAAAAAA));
+        CheckBox ck = new CheckBox(this);
+        ck.setText("읽는 동안 화면 켜짐 유지");
+        ck.setTextColor(Color.WHITE);
+        ck.setChecked(keepOn);
+        ck.setOnCheckedChangeListener((b, c) -> { keepOn = c; savePrefs(); applyKeepOn(); });
+        settingsBody.addView(ck);
+        seekRow("추가 어둡게 (휴대폰 최저 밝기보다 더 어둡게)", 0, 70, dimPct, "%", 1, v -> { dimPct = v; applyDim(); });
+        settingsBody.addView(label("화면 밝기 자체는 휴대폰 밝기를 그대로 따라갑니다.", 12, 0xFFAAAAAA));
 
         section("앱");
         Button up = new Button(this);
@@ -1190,7 +1596,7 @@ public class MainActivity extends Activity {
 
     // ───────────────────────── 색 선택 ─────────────────────────
     private void pickColor(final boolean isBg) {
-        if (theme >= 0) { customBg = bgColor(); customFg = fgColor(); }
+        if (effTheme() >= 0) { customBg = bgColor(); customFg = fgColor(); }
         final int[] cur = {isBg ? customBg : customFg};
         pickerPanel.removeAllViews();
         LinearLayout box = new LinearLayout(this);
@@ -1270,7 +1676,7 @@ public class MainActivity extends Activity {
         ok.setText("적용");
         ok.setOnClickListener(v -> {
             if (isBg) customBg = cur[0]; else customFg = cur[0];
-            theme = -1;
+            setTheme(-1);
             savePrefs();
             pickerPanel.setVisibility(View.GONE);
             fillSettings();
@@ -1285,6 +1691,53 @@ public class MainActivity extends Activity {
         sv.addView(box, new ViewGroup.LayoutParams(-1, -2));
         pickerPanel.addView(sv, new FrameLayout.LayoutParams(-1, -1));
         pickerPanel.setVisibility(View.VISIBLE);
+    }
+
+    // ───────────────────────── 취침 타이머 ─────────────────────────
+    private void sleepDialog() {
+        String[] it = {"15분 후", "30분 후", "60분 후", "타이머 끄기"};
+        String ttl = "취침 타이머" + (sleepEndAt > 0 ? " (약 " + sleepRemain() + "분 남음)" : "");
+        new android.app.AlertDialog.Builder(this).setTitle(ttl).setItems(it, (d, w) -> {
+            if (w == 3) setSleep(0); else setSleep(new int[]{15, 30, 60}[w]);
+        }).show();
+    }
+
+    private int sleepRemain() {
+        return (int) Math.max(1, (sleepEndAt - android.os.SystemClock.elapsedRealtime() + 59999) / 60000);
+    }
+
+    private void setSleep(int min) {
+        if (sleepRun != null) ui.removeCallbacks(sleepRun);
+        sleepRun = null;
+        if (min <= 0) {
+            sleepEndAt = 0;
+            Toast.makeText(this, "취침 타이머를 껐어요", Toast.LENGTH_SHORT).show();
+        } else {
+            sleepEndAt = android.os.SystemClock.elapsedRealtime() + min * 60000L;
+            sleepRun = this::sleepFire;
+            ui.postDelayed(sleepRun, min * 60000L);
+            Toast.makeText(this, min + "분 뒤에 화면을 어둡게 하고 멈춰요", Toast.LENGTH_SHORT).show();
+        }
+        updateInfo();
+    }
+
+    private void sleepFire() {
+        sleepEndAt = 0;
+        sleepRun = null;
+        savePos();
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = 0.01f;
+        getWindow().setAttributes(lp);
+        sleepCover.setVisibility(View.VISIBLE);
+    }
+
+    private void sleepWake() {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        getWindow().setAttributes(lp);
+        sleepCover.setVisibility(View.GONE);
+        applyKeepOn();
     }
 
     // ───────────────────────── 텍스트 검색 ─────────────────────────
@@ -1317,8 +1770,7 @@ public class MainActivity extends Activity {
         if (pageCount > 0 && !paginating) showPage(false);
     }
 
-    private CharSequence highlight(String sub) {
-        SpannableString ss = new SpannableString(sub);
+    private void highlight(SpannableString ss, String sub) {
         String hay = sub.toLowerCase(Locale.ROOT);
         String q = searchQ.toLowerCase(Locale.ROOT);
         if (hay.length() != sub.length()) { hay = sub; q = searchQ; }
@@ -1328,7 +1780,6 @@ public class MainActivity extends Activity {
             ss.setSpan(new ForegroundColorSpan(0xFF000000), i, i + q.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             i += q.length();
         }
-        return ss;
     }
 
     private void doSearch(boolean fwd) {
@@ -1394,7 +1845,7 @@ public class MainActivity extends Activity {
 
     private void askTree(int forWhat) {
         treeFor = forWhat;
-        Toast.makeText(this, forWhat == 1 ? "관리할 폴더를 선택해 주세요 (이동·삭제 허용 필요)" : "책 파일들이 들어 있는 폴더를 한 번만 선택해 주세요", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, forWhat == 1 ? "관리할 폴더를 선택해 주세요 (이동·삭제 허용 필요)" : forWhat >= 2 ? "백업 파일을 저장·읽을 폴더를 선택해 주세요 (쓰기 허용 필요)" : "책 파일들이 들어 있는 폴더를 한 번만 선택해 주세요", Toast.LENGTH_LONG).show();
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(i, REQ_TREE);
@@ -1437,6 +1888,131 @@ public class MainActivity extends Activity {
                 if (fn != null) open(fn);
                 else if (nt) { Toast.makeText(this, "현재 파일이 선택한 폴더에 없어요. 폴더를 다시 선택해 주세요", Toast.LENGTH_LONG).show(); askTree(0); }
                 else if (fe != null) Toast.makeText(this, fe, Toast.LENGTH_LONG).show();
+            });
+        }).start();
+    }
+
+    // ───────────────────────── 백업 / 복원 ─────────────────────────
+    private static boolean isBackupKey(String k) {
+        return !k.equals("tree") && !k.equals("tver");
+    }
+
+    private String buildBackup() throws Exception {
+        JSONObject root = new JSONObject();
+        root.put("app", "나의소설");
+        root.put("v", 1);
+        JSONObject ps = new JSONObject();
+        for (java.util.Map.Entry<String, ?> en : sp.getAll().entrySet()) {
+            String k = en.getKey(); Object v = en.getValue();
+            if (!isBackupKey(k) || k.startsWith("off_")) continue;
+            JSONObject o = new JSONObject();
+            if (v instanceof Boolean) { o.put("t", "b"); o.put("v", (Boolean) v); }
+            else if (v instanceof Integer) { o.put("t", "i"); o.put("v", (Integer) v); }
+            else if (v instanceof Float) { o.put("t", "f"); o.put("v", ((Float) v).doubleValue()); }
+            else if (v instanceof String) { o.put("t", "s"); o.put("v", (String) v); }
+            else continue;
+            ps.put(k, o);
+        }
+        root.put("prefs", ps);
+        return root.toString();
+    }
+
+    private void doBackup() {
+        final String t = sp.getString("tree", null);
+        if (t == null || !hasWrite(Uri.parse(t))) { askTree(2); return; }
+        new Thread(() -> {
+            String msg;
+            try {
+                final String data = buildBackup();
+                Uri tree = Uri.parse(t);
+                String rootId = DocumentsContract.getTreeDocumentId(tree);
+                Uri existing = null;
+                Uri kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, rootId);
+                try (Cursor c = getContentResolver().query(kids, new String[]{
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+                    while (c != null && c.moveToNext())
+                        if (BACKUP_NAME.equals(c.getString(1))) { existing = DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)); break; }
+                }
+                if (existing == null)
+                    existing = DocumentsContract.createDocument(getContentResolver(), DocumentsContract.buildDocumentUriUsingTree(tree, rootId), "application/json", BACKUP_NAME);
+                if (existing == null) throw new IllegalStateException("파일을 만들지 못했어요");
+                try (OutputStream os = getContentResolver().openOutputStream(existing, "wt")) {
+                    os.write(data.getBytes("UTF-8"));
+                }
+                msg = "백업 완료: 선택한 폴더의 '" + BACKUP_NAME + "'";
+            } catch (Exception e) {
+                msg = "백업 실패: " + e.getMessage() + "\n폴더를 다시 선택해 보세요";
+            }
+            final String m = msg;
+            ui.post(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show());
+        }).start();
+    }
+
+    private void confirmRestore() {
+        final String t = sp.getString("tree", null);
+        if (t == null || !hasWrite(Uri.parse(t))) { askTree(3); return; }
+        new android.app.AlertDialog.Builder(this).setTitle("복원")
+                .setMessage("선택한 폴더의 '" + BACKUP_NAME + "'로 설정·읽던 위치·책갈피를 덮어씁니다. 계속할까요?")
+                .setPositiveButton("복원", (d, w) -> doRestore(t))
+                .setNegativeButton("취소", null).show();
+    }
+
+    private void doRestore(final String t) {
+        new Thread(() -> {
+            String msg;
+            boolean ok = false;
+            try {
+                Uri tree = Uri.parse(t);
+                String rootId = DocumentsContract.getTreeDocumentId(tree);
+                Uri src = null;
+                Uri kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, rootId);
+                try (Cursor c = getContentResolver().query(kids, new String[]{
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+                    while (c != null && c.moveToNext())
+                        if (BACKUP_NAME.equals(c.getString(1))) { src = DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)); break; }
+                }
+                if (src == null) throw new IllegalStateException("선택한 폴더에 '" + BACKUP_NAME + "'가 없어요");
+                java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                try (java.io.InputStream in = getContentResolver().openInputStream(src)) {
+                    byte[] buf = new byte[8192]; int n;
+                    while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+                }
+                JSONObject ps = new JSONObject(bo.toString("UTF-8")).getJSONObject("prefs");
+                SharedPreferences.Editor ed = sp.edit();
+                java.util.Iterator<String> it = ps.keys();
+                int cnt = 0;
+                while (it.hasNext()) {
+                    String k = it.next();
+                    if (!isBackupKey(k)) continue;
+                    JSONObject o = ps.getJSONObject(k);
+                    String ty = o.getString("t");
+                    if (ty.equals("b")) ed.putBoolean(k, o.getBoolean("v"));
+                    else if (ty.equals("i")) ed.putInt(k, o.getInt("v"));
+                    else if (ty.equals("f")) ed.putFloat(k, (float) o.getDouble("v"));
+                    else if (ty.equals("s")) ed.putString(k, o.getString("v"));
+                    else continue;
+                    cnt++;
+                }
+                ed.apply();
+                ok = true;
+                msg = "복원 완료 (" + cnt + "개 항목)";
+            } catch (Exception e) {
+                msg = "복원 실패: " + e.getMessage();
+            }
+            final String m = msg; final boolean fok = ok;
+            ui.post(() -> {
+                Toast.makeText(this, m, Toast.LENGTH_LONG).show();
+                if (!fok) return;
+                loadPrefs();
+                applyDim(); applyKeepOn();
+                lastEff = -2; layoutDirty = true;
+                if (!bk.isEmpty()) {
+                    keepOffset = sp.getInt("o2_" + bk, keepOffset);
+                    loadBms();
+                }
+                pv.invalidate();
+                if (pageCount > 0) requestRepaginate();
+                fillSettings();
             });
         }).start();
     }
@@ -1516,11 +2092,34 @@ public class MainActivity extends Activity {
             ui.post(() -> {
                 if (!dirId.equals(fmDirId)) return;
                 if (fe != null) Toast.makeText(this, "목록을 읽지 못했어요: " + fe, Toast.LENGTH_LONG).show();
-                fmItems = list;
-                fmAdapter.notifyDataSetChanged();
-                updateFmBottom();
+                fmAll = list;
+                fmFilter = "";
+                applyFmFilter();
             });
         }).start();
+    }
+
+    private void applyFmFilter() {
+        if (fmFilter.isEmpty()) fmItems = fmAll;
+        else {
+            ArrayList<Fe> r = new ArrayList<>();
+            String q = fmFilter.toLowerCase(Locale.ROOT);
+            for (Fe e : fmAll) if (e.name.toLowerCase(Locale.ROOT).contains(q)) r.add(e);
+            fmItems = r;
+        }
+        fmSearchB.setText(fmFilter.isEmpty() ? "파일명 검색" : "검색 해제");
+        fmAdapter.notifyDataSetChanged();
+        updateFmBottom();
+    }
+
+    private void fmSearchDialog() {
+        if (!fmFilter.isEmpty()) { fmFilter = ""; applyFmFilter(); return; }
+        final EditText et = new EditText(this);
+        et.setSingleLine(true);
+        et.setHint("파일명에 포함된 글자");
+        new android.app.AlertDialog.Builder(this).setTitle("이 폴더에서 파일명 검색").setView(et)
+                .setPositiveButton("검색", (d, w) -> { fmFilter = et.getText().toString().trim(); applyFmFilter(); })
+                .setNegativeButton("취소", null).show();
     }
 
     private void fmClick(Fe e) {
