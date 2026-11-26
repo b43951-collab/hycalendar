@@ -31,6 +31,7 @@ final class Memos {
         boolean shared;                    // 배우자와 공유 (기본 꺼짐)
         boolean family;                    // 가족 전체와 공유 (기본 꺼짐)
         String owner = "";                 // 작성자 uid (서버 공유용)
+        String ownerName = "";             // 작성자 이름 (안내 문구용, 게시판 이름 설정 기준)
 
         boolean repeats() { return !repShift.isEmpty() || repDow != 0 || repDate != 0; }
     }
@@ -110,6 +111,7 @@ final class Memos {
 
     static synchronized void save(Memo m) {
         if (m.owner.isEmpty()) m.owner = Sync.uid();
+        stamp(m);
         upsert(m);
         if (m.shared || m.family) Sync.pushMemo(m); else Sync.delMemo(m.id);
     }
@@ -147,6 +149,18 @@ final class Memos {
         } catch (Exception ignored) { }
     }
 
+    /** 내가 쓴 메모에는 내 이름을 함께 남긴다 (다른 사람이 수정·삭제하려 할 때 누구 것인지 알려 주기 위해) */
+    static void stamp(Memo m) {
+        try { if (!m.owner.isEmpty() && m.owner.equals(Sync.uid())) { String n = Sync.boardName(); m.ownerName = "익명".equals(n) ? "" : n; } } catch (Throwable ignored) { }
+    }
+
+    /** 작성자가 아닐 때 보여 줄 안내 (동작: 수정/삭제) */
+    static String denyMsg(Memo m, String what) {
+        String n = m.ownerName;
+        if (n.isEmpty() && !m.owner.isEmpty() && m.owner.equals(Sync.partner())) n = Store.getS("mate_name", "");   // 예전 메모는 이름이 없으니 배우자 이름으로
+        return n.isEmpty() ? "작성자만 " + what + "할 수 있어요" : "작성자(" + n + ")만 " + what + "할 수 있어요";
+    }
+
     /** 내가 쓴 메모(또는 작성자 정보가 없는 예전 메모)만 고칠 수 있다 */
     static boolean mine(Memo m) {
         String me = Sync.uid();
@@ -167,7 +181,7 @@ final class Memos {
         o.put("c2", m.color); o.put("bg2", m.bg); o.put("td", m.todo); o.put("dn", m.done); o.put("ad", m.allDay);
         o.put("s", m.start.toString()); o.put("e", m.end == null ? "" : m.end.toString());
         o.put("sm", m.sMin); o.put("em", m.eMin); o.put("n", m.notify); o.put("nd", m.notifyDays);
-        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar); o.put("sh", m.shared); o.put("fm", m.family); o.put("ow", m.owner);
+        o.put("rs", m.repShift); o.put("rd", m.repDow); o.put("rdy", m.repDay); o.put("rdt", m.repDate); o.put("rl", m.repLunar); o.put("sh", m.shared); o.put("fm", m.family); o.put("ow", m.owner); o.put("on", m.ownerName);
         return o;
     }
 
@@ -189,7 +203,7 @@ final class Memos {
         m.repShift = o.optString("rs").replace("L", ""); m.repDow = o.optInt("rd"); m.repDay = o.optInt("rdy");
         m.repDate = o.has("rdt") ? o.optInt("rdt") : (o.optBoolean("rm") ? 1 : 0);
         m.repLunar = o.optBoolean("rl");
-        m.shared = o.optBoolean("sh", false); m.family = o.optBoolean("fm", false); m.owner = o.optString("ow", "");
+        m.shared = o.optBoolean("sh", false); m.family = o.optBoolean("fm", false); m.owner = o.optString("ow", ""); m.ownerName = o.optString("on", "");
         return m;
     }
 

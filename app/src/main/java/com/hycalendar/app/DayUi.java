@@ -160,7 +160,7 @@ final class DayUi {
         }
         final List<View> rows = new ArrayList<>();
         for (Memos.Memo m : list) {
-            View mr = memoRow(m, true, v -> { if (!Memos.mine(m)) { toast("작성자만 삭제할 수 있어요"); return; } new android.app.AlertDialog.Builder(act)
+            View mr = memoRow(m, true, v -> { if (!Memos.mine(m)) { toast(Memos.denyMsg(m, "삭제")); return; } new android.app.AlertDialog.Builder(act)
                     .setTitle("메모 삭제")
                     .setMessage("이 메모를 삭제할까요?\n" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text))
                     .setPositiveButton("삭제", (x, w) -> {
@@ -426,7 +426,7 @@ final class DayUi {
             box.addView(e);
         }
         for (Memos.Memo m : all) {
-            View r = memoRow(m, false, v -> { if (!Memos.mine(m)) { toast("작성자만 삭제할 수 있어요"); return; } new android.app.AlertDialog.Builder(act)
+            View r = memoRow(m, false, v -> { if (!Memos.mine(m)) { toast(Memos.denyMsg(m, "삭제")); return; } new android.app.AlertDialog.Builder(act)
                     .setTitle("메모 삭제")
                     .setMessage("이 메모를 삭제할까요?\n" + (m.text.length() > 30 ? m.text.substring(0, 30) + "…" : m.text))
                     .setPositiveButton("삭제", (x, w) -> {
@@ -475,7 +475,7 @@ final class DayUi {
 
     private void openEditor(Memos.Memo src, LocalDate defDate) {
         final boolean isNew = src == null;
-        if (!isNew && !Memos.mine(src)) { toast("작성자만 수정할 수 있어요"); return; }
+        if (!isNew && !Memos.mine(src)) { toast(Memos.denyMsg(src, "수정")); return; }
         final Memos.Memo m = new Memos.Memo();
         if (isNew) {
             m.start = defDate;

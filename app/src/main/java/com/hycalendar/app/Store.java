@@ -203,7 +203,7 @@ final class Store {
             case "synced_cid": case "synced_pt": case "mcount": case "scount": case "grp_mate":
             case "perm_next": case "perm_guide_ver": case "notif_asked": case "login_later":
             case "srv_bk": case "srv_bk_ms": case "auto_bk": case "app_ver": case "purged_mate_uses":
-            case "sched_codes": case "al_state": case "beta_upd": case "upd_chk_ms":
+            case "sched_codes": case "al_state": case "beta_upd": case "upd_chk_ms": case "mate_name":
                 return true;
             default:
                 return k.matches("w\\d+_.*");
