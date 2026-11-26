@@ -613,6 +613,13 @@ public class MainActivity extends Activity {
                 else toast("최신 버전이에요");
             });
         }));
+        // 개발자용(시험 버전 받기를 켰거나 관리자 계정): 서버 사용량을 바로 열어 본다
+        if (Updater.beta() || Sync.isAdmin) {
+            uc.addView(Ui.btn(this, th, "Firebase 사용량 보기 (읽기·쓰기·전송량)", false, v ->
+                    openUrl("https://console.firebase.google.com/project/hycalendar-b73ed/firestore/databases/-default-/usage")));
+            uc.addView(Ui.btn(this, th, "GitHub 보기 (빌드·배포·접속 현황)", false, v ->
+                    openUrl("https://github.com/b43951-collab/hycalendar/actions")));
+        }
         box.addView(uc);
 
         box.addView(Ui.sectionTitle(this, th, "보기"));
@@ -755,6 +762,11 @@ public class MainActivity extends Activity {
         l.setOrientation(LinearLayout.VERTICAL);
         l.setPadding(dp(14), dp(10), dp(14), dp(10));
         return l;
+    }
+
+    private void openUrl(String u) {
+        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(u))); }
+        catch (Throwable e) { toast("열 수 있는 브라우저가 없어요"); }
     }
 
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
