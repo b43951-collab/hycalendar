@@ -1405,7 +1405,7 @@ public class MainActivity extends Activity {
         settingsPanel.setVisibility(View.GONE);
         savePrefs();
         applyDim();
-        applyKeepOn();
+        applyKeepOn(); goImmersive();
         lastEff = -2;
         checkAutoTheme();
         if (layoutDirty && !text.isEmpty()) { keepOffset = pageCount > 0 ? starts[Math.min(curPage, pageCount - 1)] : keepOffset; repaginate(); }
