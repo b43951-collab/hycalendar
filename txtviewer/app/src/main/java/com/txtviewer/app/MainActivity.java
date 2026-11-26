@@ -108,7 +108,7 @@ public class MainActivity extends Activity {
     private int marginH, marginV; // dp
     private int font;
     private boolean showNum, volKeys, animOn;
-    private boolean autoTheme, keepOn = true;
+    private boolean autoTheme, keepOn = true, fullScr = true;
     private int dayTheme = 0, nightTheme = 1, nightStart = 20, nightEnd = 6, dimPct = 0, indentCh = 0, gap10 = 0;
     private int lastEff = -2;
     private View dimView;
@@ -256,6 +256,21 @@ public class MainActivity extends Activity {
 
     private void goImmersive0() {
         Window w = getWindow();
+        if (!fullScr) {   // 일반 모드: 상태바·내비게이션바 표시
+            if (Build.VERSION.SDK_INT >= 28) {
+                WindowManager.LayoutParams lp = w.getAttributes();
+                lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+                w.setAttributes(lp);
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                w.setDecorFitsSystemWindows(true);
+                WindowInsetsController c = w.getInsetsController();
+                if (c != null) c.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            } else {
+                w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            }
+            return;
+        }
         if (Build.VERSION.SDK_INT >= 28) {
             WindowManager.LayoutParams lp = w.getAttributes();
             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
@@ -325,6 +340,7 @@ public class MainActivity extends Activity {
         nightEnd = sp.getInt("ne", 6);
         dimPct = sp.getInt("dim", 0);
         keepOn = sp.getBoolean("keep", true);
+        fullScr = sp.getBoolean("full", true);
         indentCh = sp.getInt("indent", 0);
         gap10 = sp.getInt("gap", 0);
     }
@@ -335,7 +351,7 @@ public class MainActivity extends Activity {
                 .putInt("mv", marginV).putInt("font", font).putBoolean("num", showNum)
                 .putBoolean("vol", volKeys).putBoolean("anim", animOn)
                 .putBoolean("auto", autoTheme).putInt("dayT", dayTheme).putInt("nightT", nightTheme)
-                .putInt("ns", nightStart).putInt("ne", nightEnd).putInt("dim", dimPct).putBoolean("keep", keepOn)
+                .putInt("ns", nightStart).putInt("ne", nightEnd).putInt("dim", dimPct).putBoolean("keep", keepOn).putBoolean("full", fullScr)
                 .putInt("indent", indentCh).putInt("gap", gap10).apply();
     }
 
@@ -1369,7 +1385,7 @@ public class MainActivity extends Activity {
         setMenu(false);
         layoutDirty = false;
         snapI = new int[]{theme, customBg, customFg, spacing10, marginH, marginV, font, showNum ? 1 : 0, volKeys ? 1 : 0, animOn ? 1 : 0,
-                autoTheme ? 1 : 0, dayTheme, nightTheme, nightStart, nightEnd, dimPct, keepOn ? 1 : 0, indentCh, gap10};
+                autoTheme ? 1 : 0, dayTheme, nightTheme, nightStart, nightEnd, dimPct, keepOn ? 1 : 0, indentCh, gap10, fullScr ? 1 : 0};
         snapSize = sizeSp;
         fillSettings();
         settingsScroll.scrollTo(0, 0);
@@ -1382,7 +1398,7 @@ public class MainActivity extends Activity {
             theme = snapI[0]; customBg = snapI[1]; customFg = snapI[2]; spacing10 = snapI[3];
             marginH = snapI[4]; marginV = snapI[5]; font = snapI[6]; showNum = snapI[7] == 1; volKeys = snapI[8] == 1; animOn = snapI[9] == 1;
             autoTheme = snapI[10] == 1; dayTheme = snapI[11]; nightTheme = snapI[12]; nightStart = snapI[13]; nightEnd = snapI[14];
-            dimPct = snapI[15]; keepOn = snapI[16] == 1; indentCh = snapI[17]; gap10 = snapI[18];
+            dimPct = snapI[15]; keepOn = snapI[16] == 1; indentCh = snapI[17]; gap10 = snapI[18]; fullScr = snapI[19] == 1;
             sizeSp = snapSize;
             layoutDirty = false;
         }
@@ -1582,6 +1598,12 @@ public class MainActivity extends Activity {
         ck.setChecked(keepOn);
         ck.setOnCheckedChangeListener((b, c) -> { keepOn = c; savePrefs(); applyKeepOn(); });
         settingsBody.addView(ck);
+        CheckBox cf = new CheckBox(this);
+        cf.setText("전체화면 모드 (끄면 상태바·하단바 표시)");
+        cf.setTextColor(Color.WHITE);
+        cf.setChecked(fullScr);
+        cf.setOnCheckedChangeListener((b, c) -> { fullScr = c; savePrefs(); goImmersive(); });
+        settingsBody.addView(cf);
         seekRow("추가 어둡게 (휴대폰 최저 밝기보다 더 어둡게)", 0, 70, dimPct, "%", 1, v -> { dimPct = v; applyDim(); });
         settingsBody.addView(label("화면 밝기 자체는 휴대폰 밝기를 그대로 따라갑니다.", 12, 0xFFAAAAAA));
 
