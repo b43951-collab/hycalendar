@@ -71,6 +71,8 @@ final class Updater {
                 String body = o.optString("body");
                 Matcher m = Pattern.compile("code (\\d+)").matcher(body);
                 int code = m.find() ? Integer.parseInt(m.group(1)) : 0;
+                int nl = body.indexOf('\n');
+                lastNotes = nl < 0 ? "" : body.substring(nl).trim();
                 Matcher vm = Pattern.compile("v(\\d+(?:\\.\\d+)*)").matcher(body);
                 if (vm.find()) ver = vm.group(1);
                 JSONArray as = o.optJSONArray("assets");
@@ -87,11 +89,14 @@ final class Updater {
         }).start();
     }
 
+    private static volatile String lastNotes = "";
+
     /** 새 버전 안내 → 확인하면 다운로드 후 설치 */
     static void promptAndInstall(Activity a, String ver, String url) {
         new AlertDialog.Builder(a)
                 .setTitle("새 버전이 있어요")
-                .setMessage((ver.isEmpty() ? "" : "v" + ver + " 버전이 ") + "나왔어요. 지금 업데이트할까요?\n내 데이터는 그대로 유지돼요.")
+                .setMessage((ver.isEmpty() ? "" : "v" + ver + " 버전이 ") + "나왔어요. 지금 업데이트할까요?\n내 데이터는 그대로 유지돼요."
+                        + (lastNotes.isEmpty() ? "" : "\n\n바뀐 점\n" + lastNotes))
                 .setPositiveButton("업데이트", (d, w) -> download(a, url))
                 .setNegativeButton("나중에", null)
                 .show();

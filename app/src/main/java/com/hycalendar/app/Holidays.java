@@ -92,6 +92,25 @@ public final class Holidays {
 
     public static String name(LocalDate d) {
         String s = of(d.getYear()).get(d);
+        String c = custom().get(d.toString());
+        if (c != null) s = (s == null) ? c : s + "·" + c;
         return s == null ? "" : s;
+    }
+
+    /** 사용자가 직접 넣은 임시공휴일 (날짜 "yyyy-MM-dd" → 이름) */
+    public static java.util.TreeMap<String, String> custom() {
+        java.util.TreeMap<String, String> m = new java.util.TreeMap<>();
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(Store.getS("custom_hol", "{}"));
+            java.util.Iterator<String> it = o.keys();
+            while (it.hasNext()) { String k = it.next(); m.put(k, o.optString(k, "임시공휴일")); }
+        } catch (Throwable ignored) { }
+        return m;
+    }
+
+    public static void setCustom(java.util.Map<String, String> m) {
+        org.json.JSONObject o = new org.json.JSONObject();
+        try { for (java.util.Map.Entry<String, String> e : m.entrySet()) o.put(e.getKey(), e.getValue()); } catch (Throwable ignored) { }
+        Store.putS("custom_hol", o.toString());
     }
 }

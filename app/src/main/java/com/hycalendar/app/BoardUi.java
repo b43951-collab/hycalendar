@@ -121,7 +121,7 @@ final class BoardUi {
                 TextView del = Ui.text(act, "삭제", 13, th.sun, true);
                 del.setPadding(dp(10), dp(6), dp(6), dp(6));
                 del.setOnClickListener(v -> new AlertDialog.Builder(act).setTitle("글 삭제").setMessage("이 글을 삭제할까요?")
-                        .setPositiveButton("삭제", (x, w) -> Sync.deletePost(p.id, e -> { if (e != null) toast(e); }))
+                        .setPositiveButton("삭제", (x, w) -> Sync.deletePost(p, e -> { if (e != null) toast(e); }))
                         .setNegativeButton("취소", null).show());
                 head.addView(del);
             }
@@ -132,21 +132,39 @@ final class BoardUi {
                 t.setTextIsSelectable(true);
                 c.addView(t);
             }
-            for (String b64 : p.ph) {
-                final Bitmap bm = decode(b64);
-                if (bm == null) continue;
-                ImageView iv = new ImageView(act);
-                iv.setImageBitmap(bm);
-                iv.setAdjustViewBounds(true);
-                iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                iv.setOnClickListener(v -> showImage(bm));
-                LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                ip.setMargins(0, dp(8), 0, 0);
-                c.addView(iv, ip);
+            addPhotos(c, p.ph);   // 예전 글: 글 안에 들어 있는 사진
+            if (p.pc > 0 && p.ph.isEmpty()) {   // 새 글: 눌렀을 때만 받아온다 (데이터 사용량 절약)
+                final TextView more = Ui.text(act, "사진 " + p.pc + "장 보기", 14, th.meRing, true);
+                more.setPadding(0, dp(8), 0, dp(4));
+                more.setOnClickListener(v -> {
+                    more.setText("불러오는 중…");
+                    more.setOnClickListener(null);
+                    Sync.fetchPhotos(p.id, p.pc, list2 -> act.runOnUiThread(() -> {
+                        c.removeView(more);
+                        if (list2.isEmpty()) { toast("사진을 불러오지 못했어요"); return; }
+                        addPhotos(c, list2);
+                    }));
+                });
+                c.addView(more);
             }
             LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             cp.setMargins(0, dp(6), 0, dp(6));
             list.addView(c, cp);
+        }
+    }
+
+    private void addPhotos(LinearLayout c, List<String> photos) {
+        for (String b64 : photos) {
+            final Bitmap bm = decode(b64);
+            if (bm == null) continue;
+            ImageView iv = new ImageView(act);
+            iv.setImageBitmap(bm);
+            iv.setAdjustViewBounds(true);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iv.setOnClickListener(v -> showImage(bm));
+            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ip.setMargins(0, dp(8), 0, 0);
+            c.addView(iv, ip);
         }
     }
 

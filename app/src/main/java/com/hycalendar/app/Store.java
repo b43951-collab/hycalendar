@@ -22,12 +22,17 @@ final class Store {
     private static SharedPreferences sp;
     private static List<Use> usesCache;
 
-    private static boolean lockedMode;   // 잠금 해제 전(재부팅 직후)에 임시로 연 상태
+    private static boolean lockedMode;
+    private static boolean usingDp;   // 잠금 해제 전(재부팅 직후)에 임시로 연 상태
 
     /**
      * 저장소를 '기기 보호 저장소'에 둔다. 재부팅 후 잠금을 풀기 전에도 알람을 다시 예약하고 울리려면 앱 데이터를 읽을 수 있어야 하기 때문이다.
      * 예전 저장소(잠금 해제 후에만 열림)의 데이터는 잠금이 풀린 첫 실행 때 한 번 통째로 옮긴다. 옮기지 못하면 예전 방식 그대로 쓴다.
      */
+    static String storageMode() {
+        return lockedMode ? "임시(잠금 해제 전)" : usingDp ? "기기 보호 저장소 (정상)" : "기본 저장소 (이전 안 됨)";
+    }
+
     static synchronized void init(Context c) {
         Context app = c.getApplicationContext();
         if (sp != null && !lockedMode) { migrateGrant(); return; }
@@ -40,8 +45,8 @@ final class Store {
             if (!done && unlocked) {
                 if (dp.moveSharedPreferencesFrom(app, "hy")) { meta.edit().putBoolean("mig_done", true).commit(); done = true; }
             }
-            if (done) { sp = dp.getSharedPreferences("hy", Context.MODE_PRIVATE); lockedMode = false; }
-            else if (unlocked) { sp = app.getSharedPreferences("hy", Context.MODE_PRIVATE); lockedMode = false; }   // 이전 실패: 예전 방식
+            if (done) { sp = dp.getSharedPreferences("hy", Context.MODE_PRIVATE); lockedMode = false; usingDp = true; }
+            else if (unlocked) { sp = app.getSharedPreferences("hy", Context.MODE_PRIVATE); lockedMode = false; usingDp = false; }   // 이전 실패: 예전 방식
             else { sp = dp.getSharedPreferences("hy_locked", Context.MODE_PRIVATE); lockedMode = true; }          // 아직 못 옮긴 상태로 잠금 해제 전: 임시
         } catch (Throwable t) {
             if (sp == null || lockedMode) { sp = app.getSharedPreferences("hy", Context.MODE_PRIVATE); lockedMode = false; }
@@ -203,7 +208,7 @@ final class Store {
             case "synced_cid": case "synced_pt": case "mcount": case "scount": case "grp_mate":
             case "perm_next": case "perm_guide_ver": case "notif_asked": case "login_later":
             case "srv_bk": case "srv_bk_ms": case "auto_bk": case "app_ver": case "purged_mate_uses":
-            case "sched_codes": case "al_state": case "beta_upd": case "upd_chk_ms": case "mate_name":
+            case "sched_codes": case "al_state": case "beta_upd": case "upd_chk_ms": case "mate_name": case "diag_log": case "last_ring_ms": case "exp_at":
                 return true;
             default:
                 return k.matches("w\\d+_.*");

@@ -295,6 +295,37 @@ public class Alarms extends BroadcastReceiver {
 
     private static final int MAX_ALARMS = 450;   // 안드로이드는 앱당 예약 500개까지만 허용 → 가까운 것부터 450개만 걸고, 울릴 때마다 다시 채운다
 
+    /** 알람 진단용 기록: 최근 20건 (울림·종료·다시 울림·누락 의심) */
+    static synchronized void logEv(String ev) {
+        try {
+            org.json.JSONArray a = new org.json.JSONArray(Store.getS("diag_log", "[]"));
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("t", System.currentTimeMillis());
+            o.put("e", ev);
+            a.put(o);
+            org.json.JSONArray out = new org.json.JSONArray();
+            for (int i = Math.max(0, a.length() - 20); i < a.length(); i++) out.put(a.get(i));
+            Store.putS("diag_log", out.toString());
+        } catch (Throwable ignored) { }
+    }
+
+    /** 예정 시각이 한참 지났는데 울린 기록이 없으면 안내 문구를 돌려준다 (앱을 열 때 호출, 재예약 전에) */
+    static String checkMissed(Context c) {
+        try {
+            Store.init(c);
+            long exp = Long.parseLong(Store.getS("exp_at", "0"));
+            long last = Long.parseLong(Store.getS("last_ring_ms", "0"));
+            long now = System.currentTimeMillis();
+            if (exp > 0 && exp < now - 90000L && last < exp - 60000L) {
+                Store.putS("exp_at", "0");
+                String when = new java.text.SimpleDateFormat("M월 d일 a h:mm", java.util.Locale.KOREA).format(new java.util.Date(exp));
+                logEv("누락 의심: " + when);
+                return when + " 알람이 울린 기록이 없어요.\n폰이 꺼져 있었거나, 알람이 막혔을 수 있어요.\n설정의 '알람 진단'에서 권한을 확인해 주세요.";
+            }
+        } catch (Throwable ignored) { }
+        return null;
+    }
+
     private static final class Trig {
         long at; int code; Intent ex;
         Trig(long at, int code, Intent ex) { this.at = at; this.code = code; this.ex = ex; }
@@ -364,6 +395,9 @@ public class Alarms extends BroadcastReceiver {
             }
         }
         Collections.sort(trigs, (x, y) -> Long.compare(x.at, y.at));
+        long expAt = 0;
+        for (Trig t0 : trigs) if ("alarm".equals(t0.ex.getStringExtra("kind"))) { expAt = t0.at; break; }
+        Store.putS("exp_at", String.valueOf(expAt));
         for (int q = 0; q < trigs.size() && q < MAX_ALARMS; q++) {
             Trig t = trigs.get(q);
             setExact(am, t.at, show, pi(c, t.code, t.ex));
@@ -412,6 +446,8 @@ public class Alarms extends BroadcastReceiver {
 
     private static void ring(Context c, Intent i) {
         if ("alarm".equals(i.getStringExtra("kind"))) {
+            Store.putS("last_ring_ms", String.valueOf(System.currentTimeMillis()));
+            logEv("울림");
             try {
                 Intent s = new Intent(c, AlarmService.class).setAction(AlarmService.ACT_RING);
                 if (i.getExtras() != null) s.putExtras(i.getExtras());

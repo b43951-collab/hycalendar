@@ -48,17 +48,20 @@ public class AlarmService extends Service {
         if (i == null) { finishRing(); return START_NOT_STICKY; }
         String a = i.getAction();
         if (ACT_STOP.equals(a)) {
-            finishRing();   // 소리·진동부터 즉시 끈다. 기록 저장에서 오류가 나도 알람은 반드시 멈춘다
+            finishRing();
+            try { Store.init(this); Alarms.logEv("종료"); } catch (Throwable ignored) { }   // 소리·진동부터 즉시 끈다. 기록 저장에서 오류가 나도 알람은 반드시 멈춘다
             try {
                 Store.init(this);
                 String kk = i.getStringExtra("key");
                 Alarms.markStopped(kk != null && !kk.isEmpty() ? kk : key);   // 오늘 이 알람은 종료됨: 앱을 열어 재예약해도 되살아나지 않는다
             } catch (Throwable ignored) { }
             try { Alarms.cancelRest(this, i.getIntExtra("base", base)); } catch (Throwable ignored) { }
+            try { Alarms.schedule(this); } catch (Throwable ignored) { }   // '다음 예정 알람' 기록도 종료한 알람 기준으로 다시 맞춘다
             return START_NOT_STICKY;
         }
         if (ACT_SNOOZE.equals(a)) {
             finishRing();
+            try { Store.init(this); Alarms.logEv("다시 울림 누름"); } catch (Throwable ignored) { }
             try {
                 Store.init(this);
                 String kk = i.getStringExtra("key");

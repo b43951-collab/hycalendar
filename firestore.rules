@@ -20,6 +20,12 @@ service cloud.firestore { match /databases/{database}/documents {
     allow update: if signedIn() && resource.data.o==request.auth.uid;
     allow delete: if signedIn() && (resource.data.o==request.auth.uid || isAdmin());
   }
+  // 게시판 사진(새 글): 글과 따로 보관. 읽기는 로그인한 누구나, 올리기는 본인 이름으로만, 지우기는 올린 사람·관리자
+  match /pphotos/{pid}{
+    allow get: if signedIn();
+    allow create: if signedIn() && request.resource.data.o==request.auth.uid;
+    allow delete: if signedIn() && (resource.data.o==request.auth.uid || isAdmin());
+  }
   // 서버 백업: 본인 계정만 읽고 쓴다
   match /backups/{uid}{ allow read, write: if signedIn() && request.auth.uid==uid; }
   match /admins/{aid}{ allow read: if signedIn() && request.auth.uid==aid; allow write: if false; }

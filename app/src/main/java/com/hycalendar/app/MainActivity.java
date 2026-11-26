@@ -89,6 +89,7 @@ public class MainActivity extends Activity {
         }
         else applyWidgetOpen(getIntent());
         versionBackup();
+        final String missedMsg = Alarms.checkMissed(this);   // 재예약보다 먼저: 지난 알람이 울렸는지 확인
         try {
             Sync.init(this, () -> runOnUiThread(() -> {
                 try { Alarms.schedule(this); } catch (Throwable ignored) { }
@@ -111,6 +112,11 @@ public class MainActivity extends Activity {
                 Updater.check(this, (newer, ver, url, err) -> { if (newer && !isFinishing()) Updater.promptAndInstall(this, ver, url); });
             }
         } catch (Throwable ignored) { }
+        if (missedMsg != null) {
+            new AlertDialog.Builder(this).setTitle("알람 확인").setMessage(missedMsg)
+                    .setPositiveButton("알람 진단 보기", (d, w) -> DiagUi.show(this, th))
+                    .setNegativeButton("닫기", null).show();
+        }
         final Runnable askLogin = () -> {
             if (Sync.configured() && !Sync.loggedIn() && !Store.getB("login_later", false)) SyncUi.loginDialog(this, th, true, this::refreshSettings);
         };
@@ -622,6 +628,34 @@ public class MainActivity extends Activity {
         }
         box.addView(uc);
 
+        box.addView(Ui.sectionTitle(this, th, "임시공휴일"));
+        LinearLayout hc = Ui.card(this, th);
+        hc.addView(Ui.text(this, "정부가 임시공휴일을 지정하면 여기서 직접 추가하세요. 상근(평일 근무) 알람과 달력에 바로 반영돼요.", 13, th.sub, false));
+        for (final java.util.Map.Entry<String, String> e : Holidays.custom().entrySet()) {
+            hc.addView(Ui.btn(this, th, e.getKey() + "  " + e.getValue() + "  (눌러서 삭제)", false, v -> {
+                java.util.TreeMap<String, String> m = Holidays.custom();
+                m.remove(e.getKey());
+                Holidays.setCustom(m);
+                afterHolidayChange();
+            }));
+        }
+        hc.addView(Ui.btn(this, th, "임시공휴일 추가", false, v -> {
+            LocalDate t = LocalDate.now();
+            new android.app.DatePickerDialog(this, (dp, y, mo, d) -> {
+                java.util.TreeMap<String, String> m = Holidays.custom();
+                m.put(LocalDate.of(y, mo + 1, d).toString(), "임시공휴일");
+                Holidays.setCustom(m);
+                afterHolidayChange();
+            }, t.getYear(), t.getMonthValue() - 1, t.getDayOfMonth()).show();
+        }));
+        box.addView(hc);
+
+        box.addView(Ui.sectionTitle(this, th, "알람 진단"));
+        LinearLayout dc = Ui.card(this, th);
+        dc.addView(Ui.text(this, "알람이 안 울렸다면 먼저 확인해 보세요. 결과를 복사해서 게시판에 올려 주시면 원인을 바로 찾을 수 있어요.", 13, th.sub, false));
+        dc.addView(Ui.btn(this, th, "알람 진단 보기", false, v -> DiagUi.show(this, th)));
+        box.addView(dc);
+
         box.addView(Ui.sectionTitle(this, th, "보기"));
         LinearLayout vc = Ui.card(this, th);
         vc.addView(Ui.toggle(this, th, "공휴일 표시", Store.getB("holiday", true), on -> { Store.putB("holiday", on); dataChanged(); }));
@@ -770,4 +804,11 @@ public class MainActivity extends Activity {
     }
 
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
+
+    private void afterHolidayChange() {
+        try { Alarms.schedule(this); } catch (Throwable ignored) { }
+        try { WidgetBase.updateAll(this); } catch (Throwable ignored) { }
+        if (cal != null) cal.invalidate();
+        showTab(tab);
+    }
 }

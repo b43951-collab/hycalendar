@@ -75,7 +75,8 @@ jobs:
           VC=$(grep -oP "versionCode \K[0-9]+" app/build.gradle)
           VN=$(grep -oP "versionName '\K[^']+" app/build.gradle)
           gh release delete beta --yes --cleanup-tag || true
-          gh release create beta hycalendar.apk --prerelease --title "시험 빌드" --notes "시험용 · 커밋 ${GITHUB_SHA::7} · v${VN} · code ${VC}" --target "$GITHUB_SHA"
+          { echo "시험용 · 커밋 ${GITHUB_SHA::7} · v${VN} · code ${VC}"; echo; cat CHANGES.txt 2>/dev/null || true; } > "$RUNNER_TEMP/notes.txt"
+          gh release create beta hycalendar.apk --prerelease --title "시험 빌드" --notes-file "$RUNNER_TEMP/notes.txt" --target "$GITHUB_SHA"
           sleep 3
           gh release edit beta --draft=false --prerelease
           gh api repos/${GITHUB_REPOSITORY}/releases/tags/beta --jq '.draft' | grep -q false

@@ -446,7 +446,8 @@ final class Sync {
     static final class Post {
         String id = "", o = "", n = "", t = "";
         long ts;
-        List<String> ph = new ArrayList<>();
+        int pc;                              // 별도 보관된 사진 장수 (새 글)
+        List<String> ph = new ArrayList<>();   // 글 안에 들어 있는 사진 (예전 글)
     }
 
     /** 관리자 여부: Firestore의 admins/{내 uid} 문서가 있으면 true (콘솔에서만 만들 수 있음). */
@@ -484,6 +485,8 @@ final class Sync {
                             @SuppressWarnings("unchecked")
                             List<String> ph = (List<String>) d.get("ph");
                             if (ph != null) p.ph = ph;
+                            Long pc = d.getLong("pc");
+                            p.pc = pc == null ? 0 : pc.intValue();
                             l.add(p);
                         }
                         cb.run(l);
@@ -492,19 +495,51 @@ final class Sync {
         } catch (Throwable t) { return () -> { }; }
     }
 
+    /** 새 글: 사진은 글과 따로(pphotos) 저장해서, 게시판 목록을 받을 때는 글자만 내려오게 한다 */
     static void addPost(String text, List<String> photos, Done cb) {
         try {
             if (!loggedIn()) { cb.run("로그인이 필요해요"); return; }
+            com.google.firebase.firestore.DocumentReference ref = db().collection("posts").document();
+            com.google.firebase.firestore.WriteBatch wb = db().batch();
             Map<String, Object> d = new HashMap<>();
             d.put("o", uid());
             d.put("n", boardName());
             d.put("t", text);
             d.put("ts", System.currentTimeMillis());
-            d.put("ph", photos);
-            db().collection("posts").add(d)
+            d.put("pc", (long) photos.size());
+            wb.set(ref, d);
+            for (int i = 0; i < photos.size(); i++) {
+                Map<String, Object> ph = new HashMap<>();
+                ph.put("o", uid());
+                ph.put("d", photos.get(i));
+                wb.set(db().collection("pphotos").document(ref.getId() + "_" + i), ph);
+            }
+            wb.commit()
                     .addOnSuccessListener(r -> cb.run(null))
                     .addOnFailureListener(e -> cb.run(errText(e)));
         } catch (Throwable t) { cb.run("실패했어요"); }
+    }
+
+    interface PhotosCb { void run(List<String> photos); }
+
+    /** 글에 딸린 사진을 눌렀을 때만 받아온다 */
+    static void fetchPhotos(String postId, int count, PhotosCb cb) {
+        final String[] got = new String[count];
+        final int[] left = {count};
+        if (count <= 0) { cb.run(new ArrayList<>()); return; }
+        for (int i = 0; i < count; i++) {
+            final int idx = i;
+            db().collection("pphotos").document(postId + "_" + i).get().addOnCompleteListener(t -> {
+                try {
+                    if (t.isSuccessful() && t.getResult() != null && t.getResult().exists()) got[idx] = t.getResult().getString("d");
+                } catch (Throwable ignored) { }
+                if (--left[0] == 0) {
+                    List<String> out = new ArrayList<>();
+                    for (String g : got) if (g != null) out.add(g);
+                    cb.run(out);
+                }
+            });
+        }
     }
 
     static void updatePost(String id, String text, Done cb) {
@@ -515,9 +550,12 @@ final class Sync {
         } catch (Throwable t) { cb.run("실패했어요"); }
     }
 
-    static void deletePost(String id, Done cb) {
+    static void deletePost(Post p, Done cb) {
         try {
-            db().collection("posts").document(id).delete()
+            com.google.firebase.firestore.WriteBatch wb = db().batch();
+            wb.delete(db().collection("posts").document(p.id));
+            for (int i = 0; i < p.pc; i++) wb.delete(db().collection("pphotos").document(p.id + "_" + i));
+            wb.commit()
                     .addOnSuccessListener(r -> cb.run(null))
                     .addOnFailureListener(e -> cb.run(errText(e)));
         } catch (Throwable t) { cb.run("실패했어요"); }

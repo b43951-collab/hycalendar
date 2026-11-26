@@ -47,7 +47,8 @@ jobs:
           VN=$(grep -oP "versionName '\K[^']+" app/build.gradle)
           cp app/build/outputs/apk/debug/app-debug.apk hycalendar.apk
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest hycalendar.apk --title "최신 빌드" --notes "커밋 ${GITHUB_SHA::7} · v${VN} · code ${VC}" --target "$GITHUB_SHA"
+          { echo "커밋 ${GITHUB_SHA::7} · v${VN} · code ${VC}"; echo; cat CHANGES.txt 2>/dev/null || true; } > "$RUNNER_TEMP/notes.txt"
+          gh release create latest hycalendar.apk --title "최신 빌드" --notes-file "$RUNNER_TEMP/notes.txt" --target "$GITHUB_SHA"
           # 릴리스가 임시저장(draft)으로 남으면 앱이 못 찾으므로 공개로 전환
           sleep 3
           gh release edit latest --draft=false --latest
