@@ -176,6 +176,17 @@ final class AlarmUi {
             r2.addView(nt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
             card.addView(r2);
             card.setOnClickListener(v -> openEditor(it, false));
+            card.setOnLongClickListener(v -> {
+                new android.app.AlertDialog.Builder(act).setTitle("알람 삭제")
+                        .setMessage("이 알람을 삭제할까요?")
+                        .setPositiveButton("삭제", (d, w) -> {
+                            Alarms.delete(it.id);
+                            Alarms.schedule(act);
+                            refresh.run();
+                        })
+                        .setNegativeButton("취소", null).show();
+                return true;
+            });
             box.addView(card);
         }
 
