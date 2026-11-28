@@ -1500,6 +1500,25 @@ public class MainActivity extends Activity {
         settingsBody.addView(fmb, new LinearLayout.LayoutParams(-1, -2));
         if (!curName.isEmpty()) settingsBody.addView(label("현재: " + curName + " (" + curCharset + ")", 12, 0xFFAAAAAA));
 
+        section("명언 위젯");
+        final int nq = QuoteWidget.load(this).size();
+        Button qb = new Button(this);
+        qb.setText("명언 관리 (" + nq + "개)");
+        qb.setAllCaps(false);
+        qb.setOnClickListener(v -> quoteManage());
+        settingsBody.addView(qb, new LinearLayout.LayoutParams(-1, -2));
+        final int[] mins = {30, 60, 180, 360, 720, 1440};
+        final String[] lbl = {"30분", "1시간", "3시간", "6시간", "12시간", "하루"};
+        int cur = sp.getInt("qint", 30), ci = 0;
+        for (int i = 0; i < mins.length; i++) if (mins[i] == cur) ci = i;
+        final int cidx = ci;
+        Button qi = new Button(this);
+        qi.setText("위젯 자동 교체 주기: " + lbl[ci] + "  (누르면 변경)");
+        qi.setAllCaps(false);
+        qi.setOnClickListener(v -> { sp.edit().putInt("qint", mins[(cidx + 1) % mins.length]).apply(); fillSettings(); });
+        settingsBody.addView(qi, new LinearLayout.LayoutParams(-1, -2));
+        settingsBody.addView(label("홈 화면 빈 곳을 길게 눌러 위젯 → '나의소설'에서 추가하세요. 위젯을 탭하면 바로 다음 명언으로 넘어가요. (자동 교체는 기기 사정에 따라 몇 분 늦을 수 있어요)", 12, 0xFFAAAAAA));
+
         section("백업 / 복원");
         LinearLayout brow = new LinearLayout(this);
         brow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1912,6 +1931,42 @@ public class MainActivity extends Activity {
                 else if (fe != null) Toast.makeText(this, fe, Toast.LENGTH_LONG).show();
             });
         }).start();
+    }
+
+    // ───────────────────────── 명언 관리 ─────────────────────────
+    private void quoteManage() {
+        final ArrayList<String> q = QuoteWidget.load(this);
+        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this).setTitle("명언 목록 (" + q.size() + ")");
+        if (q.isEmpty()) b.setMessage("아직 명언이 없어요. '추가'를 눌러 넣어 보세요.");
+        else {
+            String[] items = new String[q.size()];
+            for (int i = 0; i < items.length; i++) {
+                String t = q.get(i).replace('\n', ' ');
+                items[i] = (i + 1) + ". " + (t.length() > 40 ? t.substring(0, 40) + "…" : t);
+            }
+            b.setItems(items, (d, w) -> quoteEdit(w));
+        }
+        b.setPositiveButton("추가", (d, w) -> quoteEdit(-1)).setNegativeButton("닫기", (d, w) -> fillSettings()).show();
+    }
+
+    private void quoteEdit(final int index) {
+        final ArrayList<String> q = QuoteWidget.load(this);
+        final EditText et = new EditText(this);
+        et.setMinLines(3);
+        et.setGravity(Gravity.TOP | Gravity.START);
+        et.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        et.setHint("자주 읽을 명언을 입력하세요");
+        if (index >= 0) et.setText(q.get(index));
+        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this)
+                .setTitle(index >= 0 ? "명언 수정" : "명언 추가").setView(et)
+                .setPositiveButton("저장", (d, w) -> {
+                    String t = et.getText().toString().trim();
+                    if (!t.isEmpty()) { if (index >= 0) q.set(index, t); else q.add(t); QuoteWidget.save(this, q); }
+                    quoteManage();
+                })
+                .setNegativeButton("취소", (d, w) -> quoteManage());
+        if (index >= 0) b.setNeutralButton("삭제", (d, w) -> { q.remove(index); QuoteWidget.save(this, q); quoteManage(); });
+        b.show();
     }
 
     // ───────────────────────── 백업 / 복원 ─────────────────────────
